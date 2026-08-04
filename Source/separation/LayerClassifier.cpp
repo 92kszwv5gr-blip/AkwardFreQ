@@ -1,4 +1,5 @@
 #include "LayerClassifier.h"
+#include "OnnxMingwShim.h"
 #include <onnxruntime_cxx_api.h>
 #include <algorithm>
 #include <cmath>
