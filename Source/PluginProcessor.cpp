@@ -5,6 +5,7 @@
 #include "export/OneShotCleaner.h"
 #include "separation/TrainingDataExporter.h"
 #include "vsthost/BatchVstRenderer.h"
+#include "vsthost/PluginChainStateIO.h"
 #include <thread>
 
 namespace afq
@@ -530,81 +531,6 @@ namespace afq
     //==============================================================================
     juce::AudioProcessorEditor* AkwardFreQProcessor::createEditor() { return new AkwardFreQEditor (*this); }
 
-    namespace
-    {
-        void serializeVstChain (juce::XmlElement& parent, const juce::String& tag, PluginChain& chain)
-        {
-            auto* chainEl = parent.createNewChildElement (tag);
-            for (auto& slot : chain.getSlotsCopy())
-            {
-                if (! slot || ! slot->isLoaded()) continue;
-
-                auto* slotEl = chainEl->createNewChildElement ("Slot");
-                slotEl->setAttribute ("bypassed", slot->isBypassed());
-                slotEl->setAttribute ("state", slot->getState().toBase64Encoding());
-
-                std::unique_ptr<juce::XmlElement> descXml (slot->getDescription().createXml());
-                if (descXml != nullptr) slotEl->addChildElement (descXml.release());
-            }
-        }
-
-        struct PendingSlotRestore
-        {
-            juce::PluginDescription description;
-            juce::MemoryBlock state;
-            bool bypassed = false;
-        };
-
-        // Restores slots one at a time, each fully (load -> setState ->
-        // setBypassed) before starting the next, so chain order survives a
-        // reload — loading is async and load times vary per plugin, so
-        // firing all of them at once would let completion order (not the
-        // saved order) determine the final chain order.
-        void restoreNextVstSlot (AkwardFreQProcessor& processor, PluginChain& chain,
-                                  std::shared_ptr<std::vector<PendingSlotRestore>> pending, size_t index)
-        {
-            if (index >= pending->size()) return;
-
-            processor.loadVstIntoChain (chain, (*pending)[index].description,
-                [&processor, &chain, pending, index] (bool ok, juce::String)
-                {
-                    if (ok)
-                    {
-                        auto slots = chain.getSlotsCopy();
-                        if (! slots.empty())
-                        {
-                            slots.back()->setState ((*pending)[index].state);
-                            slots.back()->setBypassed ((*pending)[index].bypassed);
-                        }
-                    }
-                    restoreNextVstSlot (processor, chain, pending, index + 1);
-                });
-        }
-
-        void deserializeVstChain (AkwardFreQProcessor& processor, juce::XmlElement* chainEl, PluginChain& chain)
-        {
-            if (chainEl == nullptr) return;
-
-            auto pending = std::make_shared<std::vector<PendingSlotRestore>>();
-            for (auto* slotEl : chainEl->getChildIterator())
-            {
-                if (! slotEl->hasTagName ("Slot")) continue;
-
-                auto* descXml = slotEl->getFirstChildElement();
-                if (descXml == nullptr) continue;
-
-                PendingSlotRestore item;
-                if (! item.description.loadFromXml (*descXml)) continue;
-
-                item.bypassed = slotEl->getBoolAttribute ("bypassed", false);
-                item.state.fromBase64Encoding (slotEl->getStringAttribute ("state"));
-                pending->push_back (std::move (item));
-            }
-
-            restoreNextVstSlot (processor, chain, pending, 0);
-        }
-    }
-
     void AkwardFreQProcessor::getStateInformation (juce::MemoryBlock& destData)
     {
         // A wrapper root holding the APVTS state and the VST chain state as
@@ -618,8 +544,8 @@ namespace afq
 
         auto* vstState = root.createNewChildElement ("AkwardFreQVstChains");
         vstState->setAttribute ("useExportVstChain", useExportVstChain_.load());
-        serializeVstChain (*vstState, "MasteringChain", masteringVstChain_);
-        serializeVstChain (*vstState, "ExportChain", exportVstChain_);
+        vstState->addChildElement (serializePluginChain (masteringVstChain_, "MasteringChain").release());
+        vstState->addChildElement (serializePluginChain (exportVstChain_, "ExportChain").release());
 
         copyXmlToBinary (root, destData);
     }
@@ -635,8 +561,8 @@ namespace afq
         if (auto* vstState = root->getChildByName ("AkwardFreQVstChains"))
         {
             useExportVstChain_.store (vstState->getBoolAttribute ("useExportVstChain", false));
-            deserializeVstChain (*this, vstState->getChildByName ("MasteringChain"), masteringVstChain_);
-            deserializeVstChain (*this, vstState->getChildByName ("ExportChain"), exportVstChain_);
+            deserializePluginChain (*this, vstState->getChildByName ("MasteringChain"), masteringVstChain_);
+            deserializePluginChain (*this, vstState->getChildByName ("ExportChain"), exportVstChain_);
         }
     }
 }

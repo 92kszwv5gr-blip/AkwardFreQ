@@ -112,6 +112,41 @@ namespace afq
 
         addAndMakeVisible (statusLabel_);
         statusLabel_.setFont (12.0f);
+
+        addAndMakeVisible (presetBar_);
+        presetBar_.onCaptureState = [this] { return captureXml(); };
+        presetBar_.onApplyState = [this] (const juce::XmlElement& xml) { applyXml (xml); };
+        presetBar_.loadDefaultIfPresent();
+    }
+
+    std::unique_ptr<juce::XmlElement> InstrumentExportPanel::captureXml() const
+    {
+        auto xml = std::make_unique<juce::XmlElement> ("InstrumentExportPreset");
+        xml->setAttribute ("name", nameEditor_.getText());
+        xml->setAttribute ("prefix", prefixEditor_.getText());
+        xml->setAttribute ("writeSfz", writeSfzToggle_.getToggleState());
+        xml->setAttribute ("writeAbleton", writeAbletonToggle_.getToggleState());
+        xml->setAttribute ("autoRoot", autoRootToggle_.getToggleState());
+        xml->setAttribute ("rootKey", rootKeySlider_.getValue());
+        xml->setAttribute ("lowKey", lowKeySlider_.getValue());
+        xml->setAttribute ("highKey", highKeySlider_.getValue());
+        return xml;
+    }
+
+    void InstrumentExportPanel::applyXml (const juce::XmlElement& xml)
+    {
+        nameEditor_.setText (xml.getStringAttribute ("name"), juce::dontSendNotification);
+        prefixEditor_.setText (xml.getStringAttribute ("prefix"), juce::dontSendNotification);
+        writeSfzToggle_.setToggleState (xml.getBoolAttribute ("writeSfz", true), juce::dontSendNotification);
+        writeAbletonToggle_.setToggleState (xml.getBoolAttribute ("writeAbleton", false), juce::dontSendNotification);
+
+        const bool autoRoot = xml.getBoolAttribute ("autoRoot", true);
+        autoRootToggle_.setToggleState (autoRoot, juce::dontSendNotification);
+        rootKeySlider_.setEnabled (! autoRoot);
+
+        rootKeySlider_.setValue (xml.getDoubleAttribute ("rootKey", 60.0), juce::dontSendNotification);
+        lowKeySlider_.setValue (xml.getDoubleAttribute ("lowKey", 0.0), juce::dontSendNotification);
+        highKeySlider_.setValue (xml.getDoubleAttribute ("highKey", 127.0), juce::dontSendNotification);
     }
 
     void InstrumentExportPanel::setAnalysisInfo (double bpm, const juce::String& key)
@@ -145,6 +180,9 @@ namespace afq
     void InstrumentExportPanel::resized()
     {
         auto area = getLocalBounds().reduced (12);
+
+        presetBar_.setBounds (area.removeFromTop (22));
+        area.removeFromTop (6);
 
         selectionLabel_.setBounds (area.removeFromTop (22));
         area.removeFromTop (8);
@@ -180,7 +218,7 @@ namespace afq
         layoutKey (highKeyLabel_, highKeySlider_);
 
         area.removeFromTop (10);
-        metadataPanel_.setBounds (area.removeFromTop (100));
+        metadataPanel_.setBounds (area.removeFromTop (126));
 
         area.removeFromTop (12);
         exportButton_.setBounds (area.removeFromTop (32));

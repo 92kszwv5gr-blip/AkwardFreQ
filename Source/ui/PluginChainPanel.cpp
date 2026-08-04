@@ -1,4 +1,5 @@
 #include "PluginChainPanel.h"
+#include "../vsthost/PluginChainStateIO.h"
 
 namespace afq
 {
@@ -115,8 +116,30 @@ namespace afq
 
         addAndMakeVisible (rowsContainer_);
 
+        addAndMakeVisible (presetBar_);
+        presetBar_.onCaptureState = [this] { return captureChainXml(); };
+        presetBar_.onApplyState = [this] (const juce::XmlElement& xml) { applyChainXml (xml); };
+
         refreshAvailablePlugins();
         refreshSlotRows();
+        presetBar_.loadDefaultIfPresent();
+    }
+
+    std::unique_ptr<juce::XmlElement> PluginChainPanel::captureChainXml (const juce::String& tagName) const
+    {
+        return serializePluginChain (chain_, tagName);
+    }
+
+    void PluginChainPanel::applyChainXml (const juce::XmlElement& xml)
+    {
+        chain_.clear();
+        refreshSlotRows(); // show the chain emptying immediately; slots repopulate as they finish loading below
+        statusLabel_.setText ("Loading chain preset...", juce::dontSendNotification);
+        deserializePluginChain (processor_, &xml, chain_, [this]
+        {
+            refreshSlotRows();
+            statusLabel_.setText ("Chain preset loaded.", juce::dontSendNotification);
+        });
     }
 
     void PluginChainPanel::refreshAvailablePlugins()
@@ -158,6 +181,9 @@ namespace afq
         auto area = getLocalBounds().reduced (8);
 
         titleLabel_.setBounds (area.removeFromTop (18));
+        area.removeFromTop (4);
+
+        presetBar_.setBounds (area.removeFromTop (22));
         area.removeFromTop (4);
 
         auto controlRow = area.removeFromTop (24);

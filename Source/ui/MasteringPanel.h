@@ -2,7 +2,9 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <functional>
+#include <memory>
 #include "PluginChainPanel.h"
+#include "PresetBar.h"
 
 namespace afq
 {
@@ -19,6 +21,19 @@ namespace afq
         void setReferenceLabel (const juce::String& text);
         void setMeasuredLoudnessLufs (float lufs);
 
+        // Captures/restores just the knob values + bypass (not the VST insert
+        // chain, which has its own separate "VstChain" preset library via
+        // vstInsertsPanel_ — see PluginChainPanel). Used by presetBar_ and by
+        // the top-level Global preset.
+        std::unique_ptr<juce::XmlElement> captureXml() const;
+        void applyXml (const juce::XmlElement& xml);
+
+        // Pass-through to the embedded VST insert chain's own capture/apply —
+        // kept separate from captureXml()/applyXml() above so the Global
+        // preset can bundle them as distinct, independently-meaningful pieces.
+        std::unique_ptr<juce::XmlElement> captureVstChainXml() const { return vstInsertsPanel_.captureChainXml ("MasteringVstChain"); }
+        void applyVstChainXml (const juce::XmlElement& xml) { vstInsertsPanel_.applyChainXml (xml); }
+
         void resized() override;
         void paint (juce::Graphics&) override;
 
@@ -26,6 +41,7 @@ namespace afq
         AkwardFreQProcessor& processor_;
         juce::AudioProcessorValueTreeState& apvts_;
 
+        PresetBar presetBar_ { "Mastering", "Mastering Preset" };
         PluginChainPanel vstInsertsPanel_;
 
         juce::Slider targetLoudnessSlider_, compAmountSlider_, limiterCeilingSlider_, eqMatchAmountSlider_;

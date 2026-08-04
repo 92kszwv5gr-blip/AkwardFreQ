@@ -103,12 +103,16 @@ target_sources(AkwardFreQ PRIVATE
     Source/ui/PluginChainPanel.cpp
     Source/ui/SliceMarkerView.cpp
     Source/ui/MetadataPanel.cpp
+    Source/ui/PresetBar.cpp
 
     Source/vsthost/PluginScanner.cpp
     Source/vsthost/HostedPluginSlot.cpp
     Source/vsthost/PluginChain.cpp
     Source/vsthost/PluginWindow.cpp
     Source/vsthost/BatchVstRenderer.cpp
+    Source/vsthost/PluginChainStateIO.cpp
+
+    Source/presets/PresetManager.cpp
 )
 
 target_include_directories(AkwardFreQ PRIVATE Source)

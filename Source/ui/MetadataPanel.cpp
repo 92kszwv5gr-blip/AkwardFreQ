@@ -25,6 +25,29 @@ namespace afq
         addAndMakeVisible (infoLabel_);
         infoLabel_.setFont (11.0f);
         infoLabel_.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+
+        addAndMakeVisible (presetBar_);
+        presetBar_.onCaptureState = [this] { return captureXml(); };
+        presetBar_.onApplyState = [this] (const juce::XmlElement& xml) { applyXml (xml); };
+        presetBar_.loadDefaultIfPresent();
+    }
+
+    std::unique_ptr<juce::XmlElement> MetadataPanel::captureXml() const
+    {
+        auto xml = std::make_unique<juce::XmlElement> ("TagProfile");
+        xml->setAttribute ("title", titleEditor_.getText());
+        xml->setAttribute ("artist", artistEditor_.getText());
+        xml->setAttribute ("genre", genreEditor_.getText());
+        xml->setAttribute ("comment", commentEditor_.getText());
+        return xml;
+    }
+
+    void MetadataPanel::applyXml (const juce::XmlElement& xml)
+    {
+        titleEditor_.setText (xml.getStringAttribute ("title"), juce::dontSendNotification);
+        artistEditor_.setText (xml.getStringAttribute ("artist"), juce::dontSendNotification);
+        genreEditor_.setText (xml.getStringAttribute ("genre"), juce::dontSendNotification);
+        commentEditor_.setText (xml.getStringAttribute ("comment"), juce::dontSendNotification);
     }
 
     void MetadataPanel::setAnalysisInfo (double bpm, const juce::String& key)
@@ -58,6 +81,9 @@ namespace afq
     void MetadataPanel::resized()
     {
         auto area = getLocalBounds().reduced (8);
+
+        presetBar_.setBounds (area.removeFromTop (22));
+        area.removeFromTop (4);
 
         auto row1 = area.removeFromTop (40);
         auto titleCol = row1.removeFromLeft (row1.getWidth() / 2);

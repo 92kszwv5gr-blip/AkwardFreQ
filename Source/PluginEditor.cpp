@@ -11,6 +11,11 @@ namespace afq
         genreAttachment_ = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
             processor_.apvts, params::genrePresetId, genreCombo_);
 
+        addAndMakeVisible (presetBar_);
+        presetBar_.onCaptureState = [this] { return captureXml(); };
+        presetBar_.onApplyState = [this] (const juce::XmlElement& xml) { applyXml (xml); };
+        presetBar_.loadDefaultIfPresent();
+
         addAndMakeVisible (importButton_);
         importButton_.onClick = [this]
         {
@@ -113,6 +118,19 @@ namespace afq
         };
     }
 
+    std::unique_ptr<juce::XmlElement> SplitPanel::captureXml() const
+    {
+        auto xml = std::make_unique<juce::XmlElement> ("StemSplitterPreset");
+        xml->setAttribute ("genrePresetId", genreCombo_.getSelectedId());
+        return xml;
+    }
+
+    void SplitPanel::applyXml (const juce::XmlElement& xml)
+    {
+        const int id = xml.getIntAttribute ("genrePresetId", genreCombo_.getSelectedId());
+        if (id > 0) genreCombo_.setSelectedId (id, juce::sendNotificationSync);
+    }
+
     void SplitPanel::setRangeSelectionMode (bool enabled) { waveformView_.setRangeSelectionMode (enabled); }
     void SplitPanel::setSelectedRange (int64_t startSample, int64_t endSample)
     {
@@ -164,6 +182,9 @@ namespace afq
     {
         auto area = getLocalBounds().reduced (10);
 
+        presetBar_.setBounds (area.removeFromTop (22));
+        area.removeFromTop (6);
+
         auto controlRow = area.removeFromTop (28);
         genreCombo_.setBounds (controlRow.removeFromLeft (200));
         controlRow.removeFromLeft (8);
@@ -193,6 +214,10 @@ namespace afq
         setResizable (true, true);
         setResizeLimits (760, 560, 1600, 1200);
         setSize (1040, 720);
+
+        addAndMakeVisible (globalPresetBar_);
+        globalPresetBar_.onCaptureState = [this] { return captureGlobalXml(); };
+        globalPresetBar_.onApplyState = [this] (const juce::XmlElement& xml) { applyGlobalXml (xml); };
 
         addAndMakeVisible (tabs_);
         tabs_.addTab ("Split", juce::Colour (0xff1e1e1e), &splitPanel_, false);
@@ -307,6 +332,12 @@ namespace afq
             processor_.generateMidiFromRange (layer, lastRangeStart_, lastRangeEnd_, outFile);
         };
 
+        // Every panel has already applied its own category default by this
+        // point (each does so in its own constructor, above). A saved Global
+        // default is a deliberate "override everything with this whole
+        // session's settings" choice, so it's applied last, after all of them.
+        globalPresetBar_.loadDefaultIfPresent();
+
         startTimerHz (4);
     }
 
@@ -327,7 +358,36 @@ namespace afq
         masteringPanel_.setMeasuredLoudnessLufs (processor_.getMeasuredLoudnessLufs());
     }
 
+    std::unique_ptr<juce::XmlElement> AkwardFreQEditor::captureGlobalXml() const
+    {
+        auto root = std::make_unique<juce::XmlElement> ("GlobalPreset");
+        root->addChildElement (splitPanel_.captureXml().release());
+        root->addChildElement (masteringPanel_.captureXml().release());
+        root->addChildElement (masteringPanel_.captureVstChainXml().release());
+        root->addChildElement (exportPanel_.captureXml().release());
+        root->addChildElement (exportPanel_.captureVstChainXml().release());
+        root->addChildElement (instrumentPanel_.captureXml().release());
+        root->addChildElement (drumRackPanel_.captureXml().release());
+        return root;
+    }
+
+    void AkwardFreQEditor::applyGlobalXml (const juce::XmlElement& xml)
+    {
+        if (auto* el = xml.getChildByName ("StemSplitterPreset"))     splitPanel_.applyXml (*el);
+        if (auto* el = xml.getChildByName ("MasteringPreset"))        masteringPanel_.applyXml (*el);
+        if (auto* el = xml.getChildByName ("MasteringVstChain"))      masteringPanel_.applyVstChainXml (*el);
+        if (auto* el = xml.getChildByName ("ExportPreset"))           exportPanel_.applyXml (*el);
+        if (auto* el = xml.getChildByName ("ExportVstChain"))         exportPanel_.applyVstChainXml (*el);
+        if (auto* el = xml.getChildByName ("InstrumentExportPreset")) instrumentPanel_.applyXml (*el);
+        if (auto* el = xml.getChildByName ("DrumChopPreset"))         drumRackPanel_.applyXml (*el);
+    }
+
     void AkwardFreQEditor::paint (juce::Graphics& g) { g.fillAll (juce::Colour (0xff141414)); }
 
-    void AkwardFreQEditor::resized() { tabs_.setBounds (getLocalBounds()); }
+    void AkwardFreQEditor::resized()
+    {
+        auto area = getLocalBounds();
+        globalPresetBar_.setBounds (area.removeFromTop (26).reduced (8, 2));
+        tabs_.setBounds (area);
+    }
 }

@@ -64,6 +64,37 @@ namespace afq
         measuredLoudnessLabel_.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
 
         addAndMakeVisible (vstInsertsPanel_);
+
+        addAndMakeVisible (presetBar_);
+        presetBar_.onCaptureState = [this] { return captureXml(); };
+        presetBar_.onApplyState = [this] (const juce::XmlElement& xml) { applyXml (xml); };
+        presetBar_.loadDefaultIfPresent();
+    }
+
+    std::unique_ptr<juce::XmlElement> MasteringPanel::captureXml() const
+    {
+        auto xml = std::make_unique<juce::XmlElement> ("MasteringPreset");
+        xml->setAttribute ("targetLoudness", (double) *apvts_.getRawParameterValue (params::masterTargetLoudnessId));
+        xml->setAttribute ("compAmount", (double) *apvts_.getRawParameterValue (params::masterCompAmountId));
+        xml->setAttribute ("limiterCeiling", (double) *apvts_.getRawParameterValue (params::masterLimiterCeilingId));
+        xml->setAttribute ("eqMatchAmount", (double) *apvts_.getRawParameterValue (params::masterEqMatchAmountId));
+        xml->setAttribute ("bypass", (*apvts_.getRawParameterValue (params::masterBypassId)) >= 0.5f);
+        return xml;
+    }
+
+    void MasteringPanel::applyXml (const juce::XmlElement& xml)
+    {
+        auto setNormalized = [this] (const juce::String& paramId, float realValue)
+        {
+            if (auto* p = apvts_.getParameter (paramId))
+                p->setValueNotifyingHost (p->convertTo0to1 (realValue));
+        };
+
+        setNormalized (params::masterTargetLoudnessId, (float) xml.getDoubleAttribute ("targetLoudness"));
+        setNormalized (params::masterCompAmountId, (float) xml.getDoubleAttribute ("compAmount"));
+        setNormalized (params::masterLimiterCeilingId, (float) xml.getDoubleAttribute ("limiterCeiling"));
+        setNormalized (params::masterEqMatchAmountId, (float) xml.getDoubleAttribute ("eqMatchAmount"));
+        setNormalized (params::masterBypassId, xml.getBoolAttribute ("bypass", false) ? 1.0f : 0.0f);
     }
 
     void MasteringPanel::setReferenceLabel (const juce::String& text) { referenceLabel_.setText (text, juce::dontSendNotification); }
@@ -81,6 +112,9 @@ namespace afq
     void MasteringPanel::resized()
     {
         auto area = getLocalBounds().reduced (12);
+
+        presetBar_.setBounds (area.removeFromTop (22));
+        area.removeFromTop (6);
 
         auto topRow = area.removeFromTop (24);
         bypassToggle_.setBounds (topRow.removeFromLeft (160));

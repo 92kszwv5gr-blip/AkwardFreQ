@@ -71,6 +71,31 @@ namespace afq
 
         addAndMakeVisible (vstChainPanel_);
         addAndMakeVisible (metadataPanel_);
+
+        addAndMakeVisible (presetBar_);
+        presetBar_.onCaptureState = [this] { return captureXml(); };
+        presetBar_.onApplyState = [this] (const juce::XmlElement& xml) { applyXml (xml); };
+        presetBar_.loadDefaultIfPresent();
+    }
+
+    std::unique_ptr<juce::XmlElement> ExportPanel::captureXml() const
+    {
+        auto xml = std::make_unique<juce::XmlElement> ("ExportPreset");
+        xml->setAttribute ("packName", packNameEditor_.getText());
+        xml->setAttribute ("genreId", genreCombo_.getSelectedId());
+        xml->setAttribute ("useVstChain", useVstChainToggle_.getToggleState());
+        return xml;
+    }
+
+    void ExportPanel::applyXml (const juce::XmlElement& xml)
+    {
+        packNameEditor_.setText (xml.getStringAttribute ("packName"), juce::dontSendNotification);
+        const int genreId = xml.getIntAttribute ("genreId", genreCombo_.getSelectedId());
+        if (genreId > 0) genreCombo_.setSelectedId (genreId, juce::dontSendNotification);
+
+        const bool useVstChain = xml.getBoolAttribute ("useVstChain", false);
+        useVstChainToggle_.setToggleState (useVstChain, juce::dontSendNotification);
+        processor_.setUseExportVstChain (useVstChain);
     }
 
     void ExportPanel::setTrackInfo (double bpm, const juce::String& key)
@@ -98,6 +123,9 @@ namespace afq
     {
         auto area = getLocalBounds().reduced (12);
 
+        presetBar_.setBounds (area.removeFromTop (22));
+        area.removeFromTop (6);
+
         infoLabel_.setBounds (area.removeFromTop (20));
         area.removeFromTop (8);
 
@@ -113,7 +141,7 @@ namespace afq
         destinationLabel_.setBounds (folderRow);
 
         area.removeFromTop (10);
-        metadataPanel_.setBounds (area.removeFromTop (100));
+        metadataPanel_.setBounds (area.removeFromTop (126));
 
         area.removeFromTop (12);
         exportButton_.setBounds (area.removeFromTop (32));

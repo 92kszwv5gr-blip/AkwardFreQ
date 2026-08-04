@@ -2,9 +2,11 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <functional>
+#include <memory>
 #include "../PluginProcessor.h"
 #include "SliceMarkerView.h"
 #include "MetadataPanel.h"
+#include "PresetBar.h"
 
 namespace afq
 {
@@ -33,6 +35,12 @@ namespace afq
         // buffer the preview slices from.
         void onSeparationResultReady();
 
+        // Captures/restores slicing mode/count and kit name/prefix defaults
+        // (not the current layer/range selection). Used by presetBar_ and by
+        // the top-level Global preset.
+        std::unique_ptr<juce::XmlElement> captureXml() const;
+        void applyXml (const juce::XmlElement& xml);
+
         std::function<void (LayerType, bool /*useRawDrumsBus*/, int64_t, int64_t, DrumRackExporter::Settings)> onExportRequested;
 
         // Fired when "Send Slice to Instrument" is clicked: (layer,
@@ -45,6 +53,7 @@ namespace afq
     private:
         AkwardFreQProcessor& processor_;
 
+        PresetBar presetBar_ { "DrumChop", "Drum Chop Preset" };
         juce::ComboBox layerCombo_;
         juce::Label rangeLabel_ { {}, "Range: whole track" };
 

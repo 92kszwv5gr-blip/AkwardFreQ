@@ -9,6 +9,7 @@
 #include "ui/InstrumentExportPanel.h"
 #include "ui/DrumRackPanel.h"
 #include "ui/MidiPanel.h"
+#include "ui/PresetBar.h"
 
 namespace afq
 {
@@ -37,11 +38,17 @@ namespace afq
         std::function<void (LayerType, int64_t, int64_t, bool)> onRegionSelectionChanged;
         std::function<void (int64_t, int64_t)> onRangeSelectionChanged;
 
+        // Captures/restores just the genre preset choice — used by presetBar_
+        // and by the top-level Global preset.
+        std::unique_ptr<juce::XmlElement> captureXml() const;
+        void applyXml (const juce::XmlElement& xml);
+
     private:
         AkwardFreQProcessor& processor_;
 
         juce::ComboBox genreCombo_;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> genreAttachment_;
+        PresetBar presetBar_ { "StemSplitter", "Splitter Preset" };
 
         juce::TextButton importButton_ { "Import Track..." };
         juce::TextButton captureButton_ { "Start Capture" };
@@ -82,7 +89,16 @@ namespace afq
     private:
         void timerCallback() override;
 
+        // Bundles every panel's own captureXml()/applyXml() (plus both VST
+        // chains) into one snapshot — "load this whole session's worth of
+        // settings at once." Each panel's own preset library (genre, mastering
+        // knobs, tag profile, VST chains, etc.) keeps working independently;
+        // this is the "save/recall everything together" option layered on top.
+        std::unique_ptr<juce::XmlElement> captureGlobalXml() const;
+        void applyGlobalXml (const juce::XmlElement& xml);
+
         AkwardFreQProcessor& processor_;
+        PresetBar globalPresetBar_ { "Global", "Global Preset" };
         juce::TabbedComponent tabs_ { juce::TabbedButtonBar::TabsAtTop };
 
         // Tracks the Split tab's current range selection (shared by the Drum

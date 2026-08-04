@@ -53,6 +53,8 @@ namespace afq
         setSnapshot (std::move (current));
     }
 
+    void PluginChain::clear() { setSnapshot ({}); }
+
     void PluginChain::setBypassed (int index, bool bypassed)
     {
         auto current = getSlotsCopy();

@@ -158,6 +158,51 @@ Ableton project and restored on reload.
 
 See `Source/vsthost/` for the hosting implementation.
 
+### Presets — saving your setup, and making it the default
+
+Every tab has its own small preset dropdown ("Splitter Preset", "Mastering
+Preset", "Chain Preset" on each VST chain, "Tag Profile", "Export Preset",
+"Instrument Preset", "Drum Chop Preset"), plus one "Global Preset" dropdown
+above the tabs that saves/recalls everything at once. Each one works the
+same way: **Save As...** names and stores the current settings, **Set
+Default** marks whichever preset is selected as the one to auto-load next
+time, and **Delete** removes it.
+
+This exists because re-entering the same setup on every project gets old
+fast — the concrete example that prompted it: type your artist name into
+**Tag Profile** once, hit Set Default, and it's pre-filled on every export
+tab from then on, in every project, without touching it again.
+
+A few things worth knowing about how this is scoped:
+
+- **Presets live outside your project, on disk** — under
+  `<user application data>/AkwardFreQ/Presets/<category>/`, one `.xml` file
+  per saved preset, plus a `_default.txt` marking which one auto-loads. This
+  is deliberate: the whole point of "make it default" is that it survives
+  across every Ableton project and every session, not just the one you saved
+  it from. Nothing here is written into your Ableton project file — that
+  still only stores your actual current settings (via the plugin's normal
+  state save/restore), same as before this feature existed.
+- **VST chains are their own shared preset library** ("Chain Preset",
+  category `VstChain`), independent of which tab's chain panel you're
+  looking at. Build a chain for full-mix mastering and another for
+  bass-focused processing, save both by name, and recall either one into
+  *either* the Mastering insert chain or the Export batch-render chain —
+  they're the same dropdown in both places on purpose.
+- **Tag Profile** (category `TagProfile`) is likewise one shared library
+  across the Export, Instrument, and Drum Chop tabs — save your artist name
+  once, not three times.
+- **The Global preset bundles everything's current settings into one
+  snapshot** (genre, mastering knobs, both VST chains, export/instrument/
+  drum-chop defaults) but doesn't touch the per-tab preset libraries
+  themselves — recalling a Global preset restores all those settings at
+  once; it doesn't overwrite your saved "Chain Preset" or "Tag Profile"
+  entries. Tag Profile fields aren't included in the Global snapshot at
+  all, since that's already covered by its own default mechanism.
+
+See `Source/presets/PresetManager.h` for the on-disk format and
+`Source/ui/PresetBar.h` for the reusable dropdown UI.
+
 ## Building (Windows)
 
 This was developed without a Windows machine or Ableton available to test

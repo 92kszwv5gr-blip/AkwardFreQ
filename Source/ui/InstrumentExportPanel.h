@@ -4,6 +4,7 @@
 #include <functional>
 #include "../PluginProcessor.h"
 #include "MetadataPanel.h"
+#include "PresetBar.h"
 
 namespace afq
 {
@@ -22,12 +23,19 @@ namespace afq
         void setComplete (bool ok, const juce::String& message);
         void setAnalysisInfo (double bpm, const juce::String& key);
 
+        // Captures/restores the export-format toggles, key-range defaults, and
+        // name/prefix defaults (not the current selection, which comes from
+        // the Split tab). Used by presetBar_ and by the top-level Global preset.
+        std::unique_ptr<juce::XmlElement> captureXml() const;
+        void applyXml (const juce::XmlElement& xml);
+
         std::function<void (AkwardFreQProcessor::OneShotExportRequest)> onExportRequested;
 
         void resized() override;
         void paint (juce::Graphics&) override;
 
     private:
+        PresetBar presetBar_ { "InstrumentExport", "Instrument Preset" };
         juce::Label selectionLabel_ { {}, "No region selected — pick one in the Split tab" };
         juce::TextEditor nameEditor_;
         juce::TextEditor prefixEditor_;

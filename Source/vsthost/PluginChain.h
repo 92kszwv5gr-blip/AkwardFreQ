@@ -25,6 +25,7 @@ namespace afq
         void removeSlot (int index);
         void moveSlot (int fromIndex, int toIndex);
         void setBypassed (int index, bool bypassed);
+        void clear(); // drops every slot — e.g. before loading a different saved chain preset over this one
 
         int getNumSlots() const;
         std::shared_ptr<HostedPluginSlot> getSlot (int index) const;

@@ -5,6 +5,7 @@
 #include "../export/SamplePackExporter.h"
 #include "PluginChainPanel.h"
 #include "MetadataPanel.h"
+#include "PresetBar.h"
 
 namespace afq
 {
@@ -23,11 +24,27 @@ namespace afq
         void setProgress (float progress0to1, const juce::String& message);
         void setComplete (bool success, const juce::String& message);
 
+        // Captures/restores pack name/genre-tag defaults and whether the VST
+        // batch-render chain is enabled (not the chain's own contents — that's
+        // vstChainPanel_'s separate "VstChain" preset library). Used by
+        // presetBar_ and by the top-level Global preset.
+        std::unique_ptr<juce::XmlElement> captureXml() const;
+        void applyXml (const juce::XmlElement& xml);
+
+        // Pass-through to the embedded batch-render VST chain's own capture/
+        // apply — kept separate from captureXml()/applyXml() above so the
+        // Global preset can bundle them as distinct, independently-meaningful
+        // pieces (same reasoning as MasteringPanel::captureVstChainXml()).
+        std::unique_ptr<juce::XmlElement> captureVstChainXml() const { return vstChainPanel_.captureChainXml ("ExportVstChain"); }
+        void applyVstChainXml (const juce::XmlElement& xml) { vstChainPanel_.applyChainXml (xml); }
+
         void resized() override;
         void paint (juce::Graphics&) override;
 
     private:
         AkwardFreQProcessor& processor_;
+
+        PresetBar presetBar_ { "Export", "Export Preset" };
 
         juce::TextEditor packNameEditor_;
         juce::ComboBox genreCombo_;

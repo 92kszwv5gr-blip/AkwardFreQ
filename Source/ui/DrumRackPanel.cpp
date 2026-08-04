@@ -120,6 +120,30 @@ namespace afq
 
         addAndMakeVisible (statusLabel_);
         statusLabel_.setFont (12.0f);
+
+        addAndMakeVisible (presetBar_);
+        presetBar_.onCaptureState = [this] { return captureXml(); };
+        presetBar_.onApplyState = [this] (const juce::XmlElement& xml) { applyXml (xml); };
+        presetBar_.loadDefaultIfPresent();
+    }
+
+    std::unique_ptr<juce::XmlElement> DrumRackPanel::captureXml() const
+    {
+        auto xml = std::make_unique<juce::XmlElement> ("DrumChopPreset");
+        xml->setAttribute ("kitName", kitNameEditor_.getText());
+        xml->setAttribute ("prefix", prefixEditor_.getText());
+        xml->setAttribute ("mode", mode_ == DrumRackExporter::SliceMode::Equal ? "equal" : "onset");
+        xml->setAttribute ("sliceCount", sliceCountKnob_.getValue());
+        return xml;
+    }
+
+    void DrumRackPanel::applyXml (const juce::XmlElement& xml)
+    {
+        kitNameEditor_.setText (xml.getStringAttribute ("kitName"), juce::dontSendNotification);
+        prefixEditor_.setText (xml.getStringAttribute ("prefix"), juce::dontSendNotification);
+        sliceCountKnob_.setValue (xml.getDoubleAttribute ("sliceCount", 16.0), juce::dontSendNotification);
+        setMode (xml.getStringAttribute ("mode", "onset") == "equal"
+                     ? DrumRackExporter::SliceMode::Equal : DrumRackExporter::SliceMode::OnsetDetected);
     }
 
     void DrumRackPanel::setAnalysisInfo (double bpm, const juce::String& key)
@@ -208,6 +232,9 @@ namespace afq
     {
         auto area = getLocalBounds().reduced (12);
 
+        presetBar_.setBounds (area.removeFromTop (22));
+        area.removeFromTop (6);
+
         layerCombo_.setBounds (area.removeFromTop (26));
         area.removeFromTop (6);
         rangeLabel_.setBounds (area.removeFromTop (20));
@@ -243,7 +270,7 @@ namespace afq
         destinationLabel_.setBounds (folderRow);
 
         area.removeFromTop (10);
-        metadataPanel_.setBounds (area.removeFromTop (100));
+        metadataPanel_.setBounds (area.removeFromTop (126));
 
         area.removeFromTop (12);
         exportButton_.setBounds (area.removeFromTop (32));
