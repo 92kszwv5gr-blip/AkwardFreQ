@@ -18,7 +18,9 @@ namespace afq
         }
     }
 
-    MasteringPanel::MasteringPanel (juce::AudioProcessorValueTreeState& apvts) : apvts_ (apvts)
+    MasteringPanel::MasteringPanel (AkwardFreQProcessor& processor)
+        : processor_ (processor), apvts_ (processor.apvts),
+          vstInsertsPanel_ (processor, processor.getMasteringVstChain(), "VST Inserts (real-time, ahead of the stages below)")
     {
         setupSlider (targetLoudnessSlider_, targetLoudnessLabel_, *this, "Target Loudness");
         setupSlider (compAmountSlider_, compAmountLabel_, *this, "Multiband Comp");
@@ -60,6 +62,8 @@ namespace afq
         addAndMakeVisible (measuredLoudnessLabel_);
         measuredLoudnessLabel_.setFont (12.0f);
         measuredLoudnessLabel_.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+
+        addAndMakeVisible (vstInsertsPanel_);
     }
 
     void MasteringPanel::setReferenceLabel (const juce::String& text) { referenceLabel_.setText (text, juce::dontSendNotification); }
@@ -103,5 +107,8 @@ namespace afq
 
         area.removeFromTop (6);
         measuredLoudnessLabel_.setBounds (area.removeFromTop (20));
+
+        area.removeFromTop (14);
+        vstInsertsPanel_.setBounds (area);
     }
 }

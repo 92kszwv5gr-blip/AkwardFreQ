@@ -3,13 +3,14 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <functional>
 #include "../export/SamplePackExporter.h"
+#include "PluginChainPanel.h"
 
 namespace afq
 {
     class ExportPanel : public juce::Component
     {
     public:
-        ExportPanel();
+        explicit ExportPanel (AkwardFreQProcessor& processor);
 
         // Fired on the message thread when the user clicks Export; the editor
         // wires this to kick off SamplePackExporter::exportPack on a background
@@ -25,6 +26,8 @@ namespace afq
         void paint (juce::Graphics&) override;
 
     private:
+        AkwardFreQProcessor& processor_;
+
         juce::TextEditor packNameEditor_;
         juce::ComboBox genreCombo_;
         juce::TextButton chooseFolderButton_ { "Choose Destination..." };
@@ -34,6 +37,9 @@ namespace afq
         juce::ProgressBar progressBar_ { progressValue_ };
         juce::Label statusLabel_;
         juce::Label infoLabel_ { {}, "No track analyzed yet" };
+
+        juce::ToggleButton useVstChainToggle_ { "Batch-render through VST chain before exporting" };
+        PluginChainPanel vstChainPanel_;
 
         juce::File destinationFolder_;
         std::unique_ptr<juce::FileChooser> fileChooser_;

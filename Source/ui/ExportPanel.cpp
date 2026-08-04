@@ -3,7 +3,9 @@
 
 namespace afq
 {
-    ExportPanel::ExportPanel()
+    ExportPanel::ExportPanel (AkwardFreQProcessor& processor)
+        : processor_ (processor),
+          vstChainPanel_ (processor, processor.getExportVstChain(), "Batch-Render VST Chain (applied to every exported file)")
     {
         addAndMakeVisible (packNameEditor_);
         packNameEditor_.setText ("AkwardFreQ Pack", juce::dontSendNotification);
@@ -58,6 +60,15 @@ namespace afq
         addAndMakeVisible (infoLabel_);
         infoLabel_.setFont (12.0f);
         infoLabel_.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+
+        addAndMakeVisible (useVstChainToggle_);
+        useVstChainToggle_.setToggleState (processor_.getUseExportVstChain(), juce::dontSendNotification);
+        useVstChainToggle_.onClick = [this]
+        {
+            processor_.setUseExportVstChain (useVstChainToggle_.getToggleState());
+        };
+
+        addAndMakeVisible (vstChainPanel_);
     }
 
     void ExportPanel::setTrackInfo (double bpm, const juce::String& key)
@@ -105,5 +116,10 @@ namespace afq
         progressBar_.setBounds (area.removeFromTop (18));
         area.removeFromTop (4);
         statusLabel_.setBounds (area.removeFromTop (20));
+
+        area.removeFromTop (14);
+        useVstChainToggle_.setBounds (area.removeFromTop (22));
+        area.removeFromTop (6);
+        vstChainPanel_.setBounds (area);
     }
 }

@@ -187,7 +187,7 @@ namespace afq
 
     //==============================================================================
     AkwardFreQEditor::AkwardFreQEditor (AkwardFreQProcessor& p)
-        : juce::AudioProcessorEditor (&p), processor_ (p), splitPanel_ (p), masteringPanel_ (p.apvts)
+        : juce::AudioProcessorEditor (&p), processor_ (p), splitPanel_ (p), masteringPanel_ (p), exportPanel_ (p)
     {
         setResizable (true, true);
         setResizeLimits (760, 560, 1600, 1200);

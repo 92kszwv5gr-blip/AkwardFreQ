@@ -2,13 +2,14 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <functional>
+#include "PluginChainPanel.h"
 
 namespace afq
 {
     class MasteringPanel : public juce::Component
     {
     public:
-        explicit MasteringPanel (juce::AudioProcessorValueTreeState& apvts);
+        explicit MasteringPanel (AkwardFreQProcessor& processor);
 
         // Fired when the user picks a reference file via the button — the editor
         // wires this to load the audio and hand it to the processor's
@@ -22,7 +23,10 @@ namespace afq
         void paint (juce::Graphics&) override;
 
     private:
+        AkwardFreQProcessor& processor_;
         juce::AudioProcessorValueTreeState& apvts_;
+
+        PluginChainPanel vstInsertsPanel_;
 
         juce::Slider targetLoudnessSlider_, compAmountSlider_, limiterCeilingSlider_, eqMatchAmountSlider_;
         juce::Label targetLoudnessLabel_ { {}, "Target Loudness" };

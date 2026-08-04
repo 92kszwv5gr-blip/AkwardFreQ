@@ -13,6 +13,8 @@
 #include "export/DrumRackExporter.h"
 #include "midi/AudioToMidiConverter.h"
 #include "midi/LoopSnapper.h"
+#include "vsthost/PluginScanner.h"
+#include "vsthost/PluginChain.h"
 
 namespace afq
 {
@@ -120,6 +122,28 @@ namespace afq
         // Training data
         void saveCorrectionsForRetraining();
 
+        //==============================================================================
+        // VST3 plugin hosting — two independent chains: `getMasteringVstChain()`
+        // is processed in real time as an insert ahead of AkwardFreQ's own
+        // mastering stages; `getExportVstChain()` is only ever used offline,
+        // to batch-render exported samples through your own plugins before
+        // they're written to disk (see setUseExportVstChain). VST3 only, and
+        // with no crash isolation — see Source/vsthost/HostedPluginSlot.h.
+        PluginScanner& getPluginScanner() noexcept { return pluginScanner_; }
+        PluginChain& getMasteringVstChain() noexcept { return masteringVstChain_; }
+        PluginChain& getExportVstChain() noexcept { return exportVstChain_; }
+
+        // Background-thread scan; `onComplete` delivered via callAsync.
+        void rescanVstPlugins (std::function<void()> onComplete = nullptr);
+
+        // Background-thread instantiation (can be slow) + chain::addSlot on
+        // success; `onComplete` reports (success, errorMessage) via callAsync.
+        void loadVstIntoChain (PluginChain& chain, const juce::PluginDescription& description,
+                                std::function<void (bool, juce::String)> onComplete = nullptr);
+
+        void setUseExportVstChain (bool shouldUse) noexcept { useExportVstChain_.store (shouldUse); }
+        bool getUseExportVstChain() const noexcept { return useExportVstChain_.load(); }
+
         // Returns the same shared instance the audio thread uses for preview
         // playback. Safe for the UI to mutate `.regions` in place (correction
         // workflow) concurrently with audio-thread reads of `.layerBuffers` —
@@ -191,6 +215,11 @@ namespace afq
         void renderLoopPreview (juce::AudioBuffer<float>& buffer);
 
         double hostSampleRate_ = 44100.0;
+
+        PluginScanner pluginScanner_;
+        PluginChain masteringVstChain_;
+        PluginChain exportVstChain_;
+        std::atomic<bool> useExportVstChain_ { false };
 
         juce::File getModelsDirectory() const;
         void loadModelsIfNeeded();

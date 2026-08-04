@@ -4,6 +4,7 @@
 #include "export/WavFileWriter.h"
 #include "export/OneShotCleaner.h"
 #include "separation/TrainingDataExporter.h"
+#include "vsthost/BatchVstRenderer.h"
 #include <thread>
 
 namespace afq
@@ -15,6 +16,7 @@ namespace afq
           apvts (*this, nullptr, "PARAMS", params::createParameterLayout())
     {
         formatManager_.registerBasicFormats(); // WAV/AIFF/FLAC/OGG — no MP3 decoder ships with JUCE, see README
+        pluginScanner_.loadCache(); // picks up a previous session's scan results, if any — no rescan needed
     }
 
     AkwardFreQProcessor::~AkwardFreQProcessor() = default;
@@ -23,6 +25,7 @@ namespace afq
     {
         hostSampleRate_ = sampleRate;
         masteringChain_.prepare (sampleRate, juce::jmax (1, getTotalNumOutputChannels()), samplesPerBlock);
+        masteringVstChain_.prepareAll (sampleRate, samplesPerBlock, juce::jmax (1, getTotalNumOutputChannels()));
 
         const int64_t captureCapacity = (int64_t) (sampleRate * 60.0 * kMaxCaptureMinutes);
         captureBuffer_.setSize (juce::jmax (1, getTotalNumInputChannels()), (int) captureCapacity, false, true, true);
@@ -205,14 +208,16 @@ namespace afq
             return;
         }
 
-        std::thread worker ([this, result, settings]() mutable
+        const bool useVstChain = useExportVstChain_.load();
+        std::thread worker ([this, result, settings, useVstChain]() mutable
         {
             juce::String error;
             const bool ok = SamplePackExporter::exportPack (*result, settings, error,
                 [this] (float p, juce::String msg)
                 {
                     juce::MessageManager::callAsync ([this, p, msg]() { if (onExportProgress) onExportProgress (p, msg); });
-                });
+                },
+                useVstChain ? &exportVstChain_ : nullptr);
 
             juce::MessageManager::callAsync ([this, ok, error]()
             {
@@ -240,14 +245,17 @@ namespace afq
         }
 
         const double sampleRate = result->sampleRate;
-        std::thread worker ([this, result, request, sampleRate]() mutable
+        const bool useVstChain = useExportVstChain_.load();
+        std::thread worker ([this, result, request, sampleRate, useVstChain]() mutable
         {
             const auto& src = result->layerBuffers[(size_t) request.sourceLayer];
 
-            // Clean up once (trim dead air, normalize, fade edges) and reuse
-            // the same cleaned audio for whichever output format(s) were
-            // requested, rather than re-slicing the raw region per format.
-            const auto cleaned = OneShotCleaner::clean (src, request.startSample, request.endSample, sampleRate);
+            // Clean up once (trim dead air, normalize, fade edges), optionally
+            // batch-render through the export VST chain, and reuse that same
+            // buffer for whichever output format(s) were requested, rather
+            // than re-slicing/re-rendering the raw region per format.
+            auto cleaned = OneShotCleaner::clean (src, request.startSample, request.endSample, sampleRate);
+            if (useVstChain) cleaned = BatchVstRenderer::render (cleaned, sampleRate, exportVstChain_);
             const int64_t cleanedStart = 0;
             const int64_t cleanedEnd = cleaned.getNumSamples();
 
@@ -322,12 +330,14 @@ namespace afq
         }
 
         const double sampleRate = result->sampleRate;
-        std::thread worker ([this, result, sourceLayer, useRawDrumsBus, rangeStart, rangeEnd, settings, sampleRate]() mutable
+        const bool useVstChain = useExportVstChain_.load();
+        std::thread worker ([this, result, sourceLayer, useRawDrumsBus, rangeStart, rangeEnd, settings, sampleRate, useVstChain]() mutable
         {
             const auto& src = useRawDrumsBus ? result->drumsBuffer : result->layerBuffers[(size_t) sourceLayer];
             juce::String error;
             int sliceCount = 0;
-            const bool ok = DrumRackExporter::exportSlicedDrums (src, sampleRate, rangeStart, rangeEnd, settings, error, &sliceCount);
+            const bool ok = DrumRackExporter::exportSlicedDrums (src, sampleRate, rangeStart, rangeEnd, settings, error, &sliceCount,
+                                                                   useVstChain ? &exportVstChain_ : nullptr);
 
             juce::MessageManager::callAsync ([this, ok, error, sliceCount]()
             {
@@ -386,6 +396,33 @@ namespace afq
         const auto trainingDir = getModelsDirectory().getParentDirectory().getChildFile ("TrainingData");
         juce::String error;
         TrainingDataExporter::save (*result, currentTrackFile_, trainingDir, error);
+    }
+
+    //==============================================================================
+    void AkwardFreQProcessor::rescanVstPlugins (std::function<void()> onComplete)
+    {
+        std::thread worker ([this, onComplete]() mutable
+        {
+            pluginScanner_.scan();
+            juce::MessageManager::callAsync ([onComplete]() { if (onComplete) onComplete(); });
+        });
+        worker.detach();
+    }
+
+    void AkwardFreQProcessor::loadVstIntoChain (PluginChain& chain, const juce::PluginDescription& description,
+                                                 std::function<void (bool, juce::String)> onComplete)
+    {
+        PluginChain* chainPtr = &chain;
+        std::thread worker ([this, chainPtr, description, onComplete]() mutable
+        {
+            auto slot = std::make_shared<HostedPluginSlot>();
+            juce::String error;
+            const bool ok = slot->load (pluginScanner_.getFormatManager(), description, error);
+            if (ok) chainPtr->addSlot (slot);
+
+            juce::MessageManager::callAsync ([ok, error, onComplete]() { if (onComplete) onComplete (ok, error); });
+        });
+        worker.detach();
     }
 
     //==============================================================================
@@ -481,24 +518,125 @@ namespace afq
         else if (loopPreviewActive_.load())
             renderLoopPreview (buffer);
 
+        // User-hosted VST3 inserts run ahead of AkwardFreQ's own mastering
+        // stages — real-time safe (no allocation, no blocking beyond a brief
+        // SpinLock to grab the current chain snapshot).
+        masteringVstChain_.processAudioThread (buffer);
+
         masteringChain_.processBlock (buffer);
     }
 
     //==============================================================================
     juce::AudioProcessorEditor* AkwardFreQProcessor::createEditor() { return new AkwardFreQEditor (*this); }
 
+    namespace
+    {
+        void serializeVstChain (juce::XmlElement& parent, const juce::String& tag, PluginChain& chain)
+        {
+            auto* chainEl = parent.createNewChildElement (tag);
+            for (auto& slot : chain.getSlotsCopy())
+            {
+                if (! slot || ! slot->isLoaded()) continue;
+
+                auto* slotEl = chainEl->createNewChildElement ("Slot");
+                slotEl->setAttribute ("bypassed", slot->isBypassed());
+                slotEl->setAttribute ("state", slot->getState().toBase64Encoding());
+
+                std::unique_ptr<juce::XmlElement> descXml (slot->getDescription().createXml());
+                if (descXml != nullptr) slotEl->addChildElement (descXml.release());
+            }
+        }
+
+        struct PendingSlotRestore
+        {
+            juce::PluginDescription description;
+            juce::MemoryBlock state;
+            bool bypassed = false;
+        };
+
+        // Restores slots one at a time, each fully (load -> setState ->
+        // setBypassed) before starting the next, so chain order survives a
+        // reload — loading is async and load times vary per plugin, so
+        // firing all of them at once would let completion order (not the
+        // saved order) determine the final chain order.
+        void restoreNextVstSlot (AkwardFreQProcessor& processor, PluginChain& chain,
+                                  std::shared_ptr<std::vector<PendingSlotRestore>> pending, size_t index)
+        {
+            if (index >= pending->size()) return;
+
+            processor.loadVstIntoChain (chain, (*pending)[index].description,
+                [&processor, &chain, pending, index] (bool ok, juce::String)
+                {
+                    if (ok)
+                    {
+                        auto slots = chain.getSlotsCopy();
+                        if (! slots.empty())
+                        {
+                            slots.back()->setState ((*pending)[index].state);
+                            slots.back()->setBypassed ((*pending)[index].bypassed);
+                        }
+                    }
+                    restoreNextVstSlot (processor, chain, pending, index + 1);
+                });
+        }
+
+        void deserializeVstChain (AkwardFreQProcessor& processor, juce::XmlElement* chainEl, PluginChain& chain)
+        {
+            if (chainEl == nullptr) return;
+
+            auto pending = std::make_shared<std::vector<PendingSlotRestore>>();
+            for (auto* slotEl : chainEl->getChildIterator())
+            {
+                if (! slotEl->hasTagName ("Slot")) continue;
+
+                auto* descXml = slotEl->getFirstChildElement();
+                if (descXml == nullptr) continue;
+
+                PendingSlotRestore item;
+                if (! item.description.loadFromXml (*descXml)) continue;
+
+                item.bypassed = slotEl->getBoolAttribute ("bypassed", false);
+                item.state.fromBase64Encoding (slotEl->getStringAttribute ("state"));
+                pending->push_back (std::move (item));
+            }
+
+            restoreNextVstSlot (processor, chain, pending, 0);
+        }
+    }
+
     void AkwardFreQProcessor::getStateInformation (juce::MemoryBlock& destData)
     {
+        // A wrapper root holding the APVTS state and the VST chain state as
+        // separate sibling children — deliberately not grafted onto apvts's
+        // own ValueTree XML, which APVTS doesn't expect extra children on.
+        juce::XmlElement root ("AkwardFreQState");
+
         auto state = apvts.copyState();
-        std::unique_ptr<juce::XmlElement> xml (state.createXml());
-        copyXmlToBinary (*xml, destData);
+        std::unique_ptr<juce::XmlElement> apvtsXml (state.createXml());
+        if (apvtsXml != nullptr) root.addChildElement (apvtsXml.release());
+
+        auto* vstState = root.createNewChildElement ("AkwardFreQVstChains");
+        vstState->setAttribute ("useExportVstChain", useExportVstChain_.load());
+        serializeVstChain (*vstState, "MasteringChain", masteringVstChain_);
+        serializeVstChain (*vstState, "ExportChain", exportVstChain_);
+
+        copyXmlToBinary (root, destData);
     }
 
     void AkwardFreQProcessor::setStateInformation (const void* data, int sizeInBytes)
     {
-        std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
-        if (xml != nullptr && xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        std::unique_ptr<juce::XmlElement> root (getXmlFromBinary (data, sizeInBytes));
+        if (root == nullptr) return;
+
+        if (auto* apvtsXml = root->getChildByName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*apvtsXml));
+
+        if (auto* vstState = root->getChildByName ("AkwardFreQVstChains"))
+        {
+            useExportVstChain_.store (vstState->getBoolAttribute ("useExportVstChain", false));
+            deserializeVstChain (*this, vstState->getChildByName ("MasteringChain"), masteringVstChain_);
+            deserializeVstChain (*this, vstState->getChildByName ("ExportChain"), exportVstChain_);
+        }
     }
 }
 

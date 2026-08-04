@@ -6,6 +6,8 @@
 
 namespace afq
 {
+    class PluginChain;
+
     // Slices the tagged regions in a SeparationResult into individual one-shot
     // .wav files, organized into per-layer folders, with a manifest.json summary.
     //
@@ -29,8 +31,13 @@ namespace afq
         // files, so call this from a background thread, never the audio thread.
         // Returns true on success; on failure `errorMessage` explains why and
         // any files already written are left in place (not rolled back).
+        //
+        // `vstChain`, if non-null, runs each region's audio through it (see
+        // BatchVstRenderer) before writing — the "batch render with your own
+        // VSTs before export" option.
         static bool exportPack (const SeparationResult& result, const ExportSettings& settings,
                                  juce::String& errorMessage,
-                                 const std::function<void (float progress0to1, juce::String message)>& onProgress = nullptr);
+                                 const std::function<void (float progress0to1, juce::String message)>& onProgress = nullptr,
+                                 PluginChain* vstChain = nullptr);
     };
 }

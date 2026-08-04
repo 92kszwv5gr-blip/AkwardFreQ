@@ -78,6 +78,7 @@ target_sources(AkwardFreQ PRIVATE
     Source/separation/SeparationEngine.cpp
     Source/separation/TrainingDataExporter.cpp
     Source/separation/DrumSlicer.cpp
+    Source/separation/EqualSlicer.cpp
 
     Source/mastering/LoudnessMeter.cpp
     Source/mastering/MasteringChain.cpp
@@ -99,6 +100,13 @@ target_sources(AkwardFreQ PRIVATE
     Source/ui/InstrumentExportPanel.cpp
     Source/ui/DrumRackPanel.cpp
     Source/ui/MidiPanel.cpp
+    Source/ui/PluginChainPanel.cpp
+
+    Source/vsthost/PluginScanner.cpp
+    Source/vsthost/HostedPluginSlot.cpp
+    Source/vsthost/PluginChain.cpp
+    Source/vsthost/PluginWindow.cpp
+    Source/vsthost/BatchVstRenderer.cpp
 )
 
 target_include_directories(AkwardFreQ PRIVATE Source)
@@ -108,6 +116,11 @@ target_compile_definitions(AkwardFreQ PUBLIC
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
+    # Hosting other developers' VST3 plugins inside AkwardFreQ (Mastering
+    # inserts + Export batch-render) — VST3 only. VST2's SDK was discontinued
+    # by Steinberg and isn't cleanly redistributable any more, so
+    # JUCE_PLUGINHOST_VST is deliberately left off.
+    JUCE_PLUGINHOST_VST3=1
 )
 
 target_link_libraries(AkwardFreQ

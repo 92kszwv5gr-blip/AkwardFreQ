@@ -51,11 +51,14 @@ between the C++ classifier and the Python retraining script.
   normalizes peak level, and applies short fades so the file has no
   boundary clicks regardless of how precisely the region was drawn — this is
   the "cleaned up" one-shot, not any kind of resynthesis.
-- **Drum Chop tab**: chops a drum layer (or the whole unsplit `drums` bus)
-  into hits via onset detection and exports them as named, prefixed `.wav`
-  files, ready to drag into an Ableton Drum Rack yourself. There's no
-  one-click `.adg` Drum Rack generator — see "Ableton preset export" below
-  for why.
+- **Drum Chop tab**: chops any stem (or the whole unsplit `drums` bus) into
+  slices and exports them as named, prefixed `.wav` files, ready to drag into
+  an Ableton Drum Rack yourself. There's no one-click `.adg` Drum Rack
+  generator — see "Ableton preset export" below for why. Two slicing modes:
+  **Onset-Detected** (follows transients, the original behavior) or **Equal
+  Slices** (mechanically divides the range into exactly N pieces via a single
+  "Slices" knob, 1–64) — useful on material with weak transients, or when you
+  just want even N-way chops regardless of what's actually in the audio.
 - **MIDI tab**: pick a range on the Split tab's waveform (toggle "Pick Range
   on Waveform"), optionally snap it to a clean 2/4/8/16-bar loop, use "Loop
   Preview" to hear it repeat before committing, then transcribe it to a
@@ -75,6 +78,54 @@ Simpler export fails with a clear error; SFZ and folder export always work
 regardless. Drum Rack (`.adg`) export isn't implemented at all yet for the
 same reason, at a scale where guessing wrong is more likely — folder export
 of chopped hits is the reliable path there.
+
+### Hosting your own VST3 plugins (Mastering and Export tabs)
+
+AkwardFreQ can load VST3 plugins you already have installed and run them in
+two different places:
+
+- **Mastering tab — "VST Inserts"**: a real-time chain that processes audio
+  *before* AkwardFreQ's own multiband comp/EQ-match/limiter stages. Add
+  plugins from your installed VST3s, reorder/bypass/remove them, and open
+  each one's own editor window to tweak it — same idea as Blue Cat's
+  PatchWork or any other "plugin chainer," just built into this plugin
+  directly rather than needing a separate host.
+- **Export tab — "Batch-Render VST Chain"**: a *separate*, offline-only
+  chain. Turn on "Batch-render through VST chain before exporting" and every
+  file written by Sample Pack / Instrument / Drum Chop export gets rendered
+  through it first (block-by-block, with tail extension for reverbs/delays
+  capped at 2s). This is the one Ableton's own device chain genuinely can't
+  do for you — Ableton never touches your files after they're exported, so
+  there's no way to "just insert a plugin on the track" to get the same
+  result.
+
+Both chains share a plugin picker: click **Rescan Plugins** once (scans the
+standard VST3 install folders and caches the results — subsequent launches
+reuse the cache), then pick a plugin and click **Add**. Loaded plugins,
+their bypass state, and their internal parameter state are saved with your
+Ableton project and restored on reload.
+
+**Scope and real caveats, stated plainly:**
+- **VST3 only.** VST2's SDK was discontinued by Steinberg years ago and
+  isn't cleanly redistributable any more; VST3 is what JUCE hosts natively
+  and what most current plugins ship as anyway.
+- **No crash isolation.** A misbehaving third-party plugin can take down
+  AkwardFreQ — and potentially the whole Ableton session — with it. This is
+  inherent to hosting plugins in-process (the same tradeoff every JUCE-based
+  plugin-chainer makes); true sandboxing would need each plugin running in
+  its own separate process, which is a much larger undertaking than what's
+  built here.
+- **Not real-time-safety-audited beyond AkwardFreQ's own code.** Once a
+  hosted plugin's `processBlock` is called, whether it behaves in a
+  real-time-safe way (no locks, no allocation) is up to that plugin, same as
+  in any other host.
+- **Restoring a saved chain reloads plugins one at a time, in order**, so
+  saved ordering is preserved even though plugin instantiation is
+  asynchronous and load times vary per plugin — but it does mean a project
+  with several heavy plugins in one chain can take a few seconds to finish
+  reloading them all after you reopen it.
+
+See `Source/vsthost/` for the hosting implementation.
 
 ## Building (Windows)
 
@@ -159,21 +210,29 @@ Source/
     SeparationEngine.*       orchestrates A -> B/C -> D on a background thread
     TrainingDataExporter.*   writes corrected regions for offline retraining
     DrumSlicer.*             onset-based chopping of a drum buffer/range into hits
+    EqualSlicer.*            mechanical N-equal-slice chopping (the "Slices" knob mode)
   mastering/
     LoudnessMeter.*          approximate BS.1770-style loudness measurement
     MasteringChain.*         multiband comp, reference EQ match, limiter
   export/
     SamplePackExporter.*     slices tagged regions into a folder-organized .wav pack
     WavFileWriter.*          shared "write this sample range as .wav" helper
+    OneShotCleaner.*         trim/normalize/fade a one-shot before instrument export
     SfzExporter.*            one-shot -> SFZ instrument (open format)
     AbletonPresetWriter.*    one-shot -> Ableton Simpler .adv (best-effort, patches a template)
     DrumRackExporter.*       chopped drum hits -> named/prefixed .wav folder
   midi/
     AudioToMidiConverter.*   monophonic pitch-tracking transcription -> Standard MIDI File
     LoopSnapper.*            bar-grid + waveform-continuity loop point search
+  vsthost/
+    PluginScanner.*          finds + caches installed VST3 plugins
+    HostedPluginSlot.*        one loaded plugin: process, bypass, editor window, state
+    PluginChain.*            thread-safe ordered list of hosted plugins
+    PluginWindow.*           DocumentWindow wrapper for a hosted plugin's editor
+    BatchVstRenderer.*       offline block-wise render through a PluginChain (export-time)
   ui/                        WaveformRegionView, RegionListPanel (correction UI),
                               MasteringPanel, ExportPanel, InstrumentExportPanel,
-                              DrumRackPanel, MidiPanel
+                              DrumRackPanel, MidiPanel, PluginChainPanel (shared VST-chain UI)
 tools/                       offline Python — model export + retraining (not built into the plugin)
 docs/FEATURE_SPEC.md         C++ <-> Python feature vector contract
 Models/                      .onnx files go here (gitignored — see Models/README.md)

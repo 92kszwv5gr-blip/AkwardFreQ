@@ -1,4 +1,6 @@
 #include "SamplePackExporter.h"
+#include "../vsthost/PluginChain.h"
+#include "../vsthost/BatchVstRenderer.h"
 #include <cmath>
 
 namespace afq
@@ -12,10 +14,20 @@ namespace afq
         }
 
         bool writeWav (const juce::AudioBuffer<float>& source, int64_t startSample, int64_t endSample,
-                        double sampleRate, const juce::File& outFile)
+                        double sampleRate, const juce::File& outFile, PluginChain* vstChain)
         {
             const int len = (int) (endSample - startSample);
             if (len <= 0) return false;
+
+            juce::AudioBuffer<float> slice (source.getNumChannels(), len);
+            for (int ch = 0; ch < source.getNumChannels(); ++ch)
+                slice.copyFrom (ch, 0, source, ch, (int) startSample, len);
+
+            // Explicit local (not a ternary bound to a reference) — avoids any
+            // ambiguity about which branch's temporary a reference would extend.
+            juce::AudioBuffer<float> toWrite = (vstChain != nullptr)
+                ? BatchVstRenderer::render (slice, sampleRate, *vstChain)
+                : std::move (slice);
 
             outFile.getParentDirectory().createDirectory();
             outFile.deleteFile();
@@ -25,23 +37,20 @@ namespace afq
 
             juce::WavAudioFormat wavFormat;
             std::unique_ptr<juce::AudioFormatWriter> writer (
-                wavFormat.createWriterFor (stream.get(), sampleRate, (unsigned int) source.getNumChannels(),
+                wavFormat.createWriterFor (stream.get(), sampleRate, (unsigned int) toWrite.getNumChannels(),
                                             24, {}, 0));
             if (writer == nullptr) return false;
 
             stream.release(); // writer now owns the stream
 
-            juce::AudioBuffer<float> slice (source.getNumChannels(), len);
-            for (int ch = 0; ch < source.getNumChannels(); ++ch)
-                slice.copyFrom (ch, 0, source, ch, (int) startSample, len);
-
-            return writer->writeFromAudioSampleBuffer (slice, 0, len);
+            return writer->writeFromAudioSampleBuffer (toWrite, 0, toWrite.getNumSamples());
         }
     }
 
     bool SamplePackExporter::exportPack (const SeparationResult& result, const ExportSettings& settings,
                                           juce::String& errorMessage,
-                                          const std::function<void (float, juce::String)>& onProgress)
+                                          const std::function<void (float, juce::String)>& onProgress,
+                                          PluginChain* vstChain)
     {
         if (! settings.destinationFolder.isDirectory() && ! settings.destinationFolder.createDirectory())
         {
@@ -91,7 +100,7 @@ namespace afq
             const juce::File layerFolder = packRoot.getChildFile (layerName (region.type));
             const juce::File outFile = layerFolder.getChildFile (fileName);
 
-            if (! writeWav (sourceBuffer, region.startSample, region.endSample, result.sampleRate, outFile))
+            if (! writeWav (sourceBuffer, region.startSample, region.endSample, result.sampleRate, outFile, vstChain))
                 continue; // skip failures, keep exporting the rest of the pack
 
             ++exportedCount;
