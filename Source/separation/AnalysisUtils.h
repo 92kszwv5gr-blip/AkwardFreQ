@@ -64,6 +64,11 @@ namespace afq
     float computeRms (const float* samples, int numSamples);
     float computeZeroCrossingRate (const float* samples, int numSamples);
 
+    // Equal-weight downmix to mono — shared by the sub-splitters, DrumSlicer,
+    // AudioToMidiConverter, and LoopSnapper wherever they need a single-channel
+    // signal for onset/pitch/cost analysis.
+    juce::AudioBuffer<float> mixToMono (const juce::AudioBuffer<float>& buffer);
+
     // Finds the sample index of the peak absolute value within [0, numSamples).
     int findPeakIndex (const float* samples, int numSamples);
 

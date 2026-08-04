@@ -29,8 +29,21 @@ namespace afq
         void setSelectedRegionIndex (int index);
         int getSelectedRegionIndex() const noexcept { return selectedIndex_; }
 
+        // Range-selection mode: for the MIDI/loop workflow, distinct from the
+        // region-correction workflow above. When enabled, dragging on empty
+        // space defines a new time range (drawn as a separate overlay from
+        // region colors); dragging near an existing range's edge resizes it.
+        // Region correction (click-to-select, edge-drag) is suspended while
+        // this mode is on so the two workflows don't fight over mouse input.
+        void setRangeSelectionMode (bool enabled);
+        void setSelectedRange (int64_t startSample, int64_t endSample);
+        int64_t getRangeStart() const noexcept { return rangeStart_; }
+        int64_t getRangeEnd() const noexcept { return rangeEnd_; }
+        bool hasRange() const noexcept { return rangeStart_ >= 0 && rangeEnd_ > rangeStart_; }
+
         std::function<void (int)> onRegionSelected;
         std::function<void()> onRegionsChanged;
+        std::function<void (int64_t, int64_t)> onRangeSelected; // fired when a range drag finishes
 
         void paint (juce::Graphics&) override;
         void resized() override;
@@ -50,14 +63,20 @@ namespace afq
 
         int selectedIndex_ = -1;
 
-        enum class DragMode { none, moveStart, moveEnd };
+        enum class DragMode { none, moveStart, moveEnd, newRange, moveRangeStart, moveRangeEnd };
         DragMode dragMode_ = DragMode::none;
         int dragRegionIndex_ = -1;
+
+        bool rangeSelectionMode_ = false;
+        int64_t rangeStart_ = -1;
+        int64_t rangeEnd_ = -1;
+        int64_t rangeDragAnchor_ = -1;
 
         float sampleToX (int64_t sample) const;
         int64_t xToSample (float x) const;
         int findRegionAt (int64_t sample) const;
         int findEdgeHandleAt (float x, float pixelTolerance) const; // returns region index if near an edge
         DragMode edgeKindAt (int regionIndex, float x, float pixelTolerance) const;
+        DragMode rangeEdgeKindAt (float x, float pixelTolerance) const;
     };
 }

@@ -77,16 +77,27 @@ target_sources(AkwardFreQ PRIVATE
     Source/separation/DemucsEngine.cpp
     Source/separation/SeparationEngine.cpp
     Source/separation/TrainingDataExporter.cpp
+    Source/separation/DrumSlicer.cpp
 
     Source/mastering/LoudnessMeter.cpp
     Source/mastering/MasteringChain.cpp
 
     Source/export/SamplePackExporter.cpp
+    Source/export/WavFileWriter.cpp
+    Source/export/SfzExporter.cpp
+    Source/export/AbletonPresetWriter.cpp
+    Source/export/DrumRackExporter.cpp
+
+    Source/midi/AudioToMidiConverter.cpp
+    Source/midi/LoopSnapper.cpp
 
     Source/ui/WaveformRegionView.cpp
     Source/ui/RegionListPanel.cpp
     Source/ui/MasteringPanel.cpp
     Source/ui/ExportPanel.cpp
+    Source/ui/InstrumentExportPanel.cpp
+    Source/ui/DrumRackPanel.cpp
+    Source/ui/MidiPanel.cpp
 )
 
 target_include_directories(AkwardFreQ PRIVATE Source)
@@ -100,6 +111,7 @@ target_compile_definitions(AkwardFreQ PUBLIC
 
 target_link_libraries(AkwardFreQ
     PRIVATE
+        juce::juce_audio_basics
         juce::juce_audio_processors
         juce::juce_audio_formats
         juce::juce_dsp

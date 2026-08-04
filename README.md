@@ -38,6 +38,39 @@ tracks.
 See `docs/FEATURE_SPEC.md` for the exact feature vector contract shared
 between the C++ classifier and the Python retraining script.
 
+### One-shot instruments, drum chopping, and MIDI (Instrument / Drum Chop / MIDI tabs)
+
+- **Instrument tab**: exports whatever region is currently selected in the
+  Split tab as a standalone one-shot — SFZ (open format, works in Kontakt via
+  its SFZ importer, Decent Sampler, sforzando, etc.) and/or an Ableton
+  Simpler preset (`.adv`). Native Instruments' own `.nki` format is encrypted
+  and undocumented — there's no legitimate way to write one, which is why SFZ
+  is the primary format here rather than a Kontakt-native file.
+- **Drum Chop tab**: chops a drum layer (or the whole unsplit `drums` bus)
+  into hits via onset detection and exports them as named, prefixed `.wav`
+  files, ready to drag into an Ableton Drum Rack yourself. There's no
+  one-click `.adg` Drum Rack generator — see "Ableton preset export" below
+  for why.
+- **MIDI tab**: pick a range on the Split tab's waveform (toggle "Pick Range
+  on Waveform"), optionally snap it to a clean 2/4/8/16-bar loop, use "Loop
+  Preview" to hear it repeat before committing, then transcribe it to a
+  Standard MIDI File. Transcription is monophonic pitch-tracking — genuinely
+  useful on a synth lead or bass layer, but it will **not** produce a real
+  chord transcription from a stab or atmosphere layer (it'll output one
+  wandering note per onset instead). Pick a monophonic layer as the source.
+
+#### Ableton preset export (`.adv` Simpler) is best-effort
+
+Ableton's `.adv`/`.adg` format is undocumented, gzip-compressed XML.
+`AbletonPresetWriter` doesn't generate this from scratch (too easy to get
+subtly wrong and produce a file Ableton silently refuses to load) — it
+*patches* a real preset you export from Ableton once. See
+`Models/Templates/README.md` for the one-time setup. Without a template,
+Simpler export fails with a clear error; SFZ and folder export always work
+regardless. Drum Rack (`.adg`) export isn't implemented at all yet for the
+same reason, at a scale where guessing wrong is more likely — folder export
+of chopped hits is the reliable path there.
+
 ## Building (Windows)
 
 This was developed without a Windows machine or Ableton available to test
@@ -109,7 +142,7 @@ Source/
                             SeparationEngine + MasteringChain, real-time safe
                             processBlock (preview mix + mastering only —
                             separation always runs on a background thread)
-  PluginEditor.*            Split / Master / Export tabs
+  PluginEditor.*            Split / Master / Export / Instrument / Drum Chop / MIDI tabs
   separation/
     DemucsEngine.*           Tier A — ONNX Runtime inference, chunked overlap-add
     AnalysisUtils.*          onset detection, spectral/pitch features (docs/FEATURE_SPEC.md)
@@ -120,14 +153,24 @@ Source/
     LayerRenderer.*          mask-based isolated-layer audio reconstruction
     SeparationEngine.*       orchestrates A -> B/C -> D on a background thread
     TrainingDataExporter.*   writes corrected regions for offline retraining
+    DrumSlicer.*             onset-based chopping of a drum buffer/range into hits
   mastering/
     LoudnessMeter.*          approximate BS.1770-style loudness measurement
     MasteringChain.*         multiband comp, reference EQ match, limiter
   export/
     SamplePackExporter.*     slices tagged regions into a folder-organized .wav pack
+    WavFileWriter.*          shared "write this sample range as .wav" helper
+    SfzExporter.*            one-shot -> SFZ instrument (open format)
+    AbletonPresetWriter.*    one-shot -> Ableton Simpler .adv (best-effort, patches a template)
+    DrumRackExporter.*       chopped drum hits -> named/prefixed .wav folder
+  midi/
+    AudioToMidiConverter.*   monophonic pitch-tracking transcription -> Standard MIDI File
+    LoopSnapper.*            bar-grid + waveform-continuity loop point search
   ui/                        WaveformRegionView, RegionListPanel (correction UI),
-                              MasteringPanel, ExportPanel
+                              MasteringPanel, ExportPanel, InstrumentExportPanel,
+                              DrumRackPanel, MidiPanel
 tools/                       offline Python — model export + retraining (not built into the plugin)
 docs/FEATURE_SPEC.md         C++ <-> Python feature vector contract
 Models/                      .onnx files go here (gitignored — see Models/README.md)
+Models/Templates/            Ableton preset templates for AbletonPresetWriter (see its README)
 ```

@@ -32,6 +32,20 @@ namespace afq
 
     void WaveformRegionView::setSelectedRegionIndex (int index) { selectedIndex_ = index; repaint(); }
 
+    void WaveformRegionView::setRangeSelectionMode (bool enabled)
+    {
+        rangeSelectionMode_ = enabled;
+        dragMode_ = DragMode::none;
+        repaint();
+    }
+
+    void WaveformRegionView::setSelectedRange (int64_t startSample, int64_t endSample)
+    {
+        rangeStart_ = juce::jlimit ((int64_t) 0, totalLengthSamples_, startSample);
+        rangeEnd_ = juce::jlimit (rangeStart_, totalLengthSamples_, endSample);
+        repaint();
+    }
+
     float WaveformRegionView::sampleToX (int64_t sample) const
     {
         if (viewLength_ <= 0) return 0.0f;
@@ -71,6 +85,14 @@ namespace afq
             if (edgeKindAt (i, x, pixelTolerance) != DragMode::none)
                 return i;
         return -1;
+    }
+
+    WaveformRegionView::DragMode WaveformRegionView::rangeEdgeKindAt (float x, float pixelTolerance) const
+    {
+        if (! hasRange()) return DragMode::none;
+        if (std::abs (x - sampleToX (rangeStart_)) <= pixelTolerance) return DragMode::moveRangeStart;
+        if (std::abs (x - sampleToX (rangeEnd_)) <= pixelTolerance) return DragMode::moveRangeEnd;
+        return DragMode::none;
     }
 
     void WaveformRegionView::paint (juce::Graphics& g)
@@ -133,18 +155,60 @@ namespace afq
                 }
             }
         }
+
+        // MIDI/loop range overlay — drawn regardless of mode so the current
+        // selection stays visible when you switch back to region correction.
+        if (hasRange())
+        {
+            const float x0 = sampleToX (rangeStart_);
+            const float x1 = sampleToX (rangeEnd_);
+            if (! (x1 < 0.0f || x0 > (float) width))
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.10f));
+                g.fillRect (juce::Rectangle<float> (x0, 0.0f, juce::jmax (1.0f, x1 - x0), (float) height));
+
+                juce::Path edges;
+                edges.startNewSubPath (x0, 0.0f); edges.lineTo (x0, (float) height);
+                edges.startNewSubPath (x1, 0.0f); edges.lineTo (x1, (float) height);
+
+                const float dashLengths[] = { 4.0f, 3.0f };
+                juce::Path dashed;
+                juce::PathStrokeType (2.0f).createDashedStroke (dashed, edges, dashLengths, 2);
+                g.setColour (juce::Colours::white.withAlpha (0.85f));
+                g.fillPath (dashed);
+            }
+        }
     }
 
     void WaveformRegionView::resized() {}
 
     void WaveformRegionView::mouseMove (const juce::MouseEvent& e)
     {
-        const bool overEdge = findEdgeHandleAt ((float) e.x, kEdgeHandlePixels) >= 0;
+        const bool overEdge = rangeSelectionMode_
+                                   ? rangeEdgeKindAt ((float) e.x, kEdgeHandlePixels) != DragMode::none
+                                   : findEdgeHandleAt ((float) e.x, kEdgeHandlePixels) >= 0;
         setMouseCursor (overEdge ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
     }
 
     void WaveformRegionView::mouseDown (const juce::MouseEvent& e)
     {
+        if (rangeSelectionMode_)
+        {
+            const auto edgeKind = rangeEdgeKindAt ((float) e.x, kEdgeHandlePixels);
+            if (edgeKind != DragMode::none)
+            {
+                dragMode_ = edgeKind;
+                return;
+            }
+
+            dragMode_ = DragMode::newRange;
+            rangeDragAnchor_ = juce::jlimit ((int64_t) 0, totalLengthSamples_, xToSample ((float) e.x));
+            rangeStart_ = rangeDragAnchor_;
+            rangeEnd_ = rangeDragAnchor_;
+            repaint();
+            return;
+        }
+
         const int edgeRegion = findEdgeHandleAt ((float) e.x, kEdgeHandlePixels);
         if (edgeRegion >= 0)
         {
@@ -164,7 +228,31 @@ namespace afq
 
     void WaveformRegionView::mouseDrag (const juce::MouseEvent& e)
     {
-        if (dragMode_ == DragMode::none || dragRegionIndex_ < 0 || regions_ == nullptr) return;
+        if (dragMode_ == DragMode::none) return;
+
+        if (dragMode_ == DragMode::newRange || dragMode_ == DragMode::moveRangeStart || dragMode_ == DragMode::moveRangeEnd)
+        {
+            const int64_t sample = juce::jlimit ((int64_t) 0, totalLengthSamples_, xToSample ((float) e.x));
+
+            if (dragMode_ == DragMode::newRange)
+            {
+                rangeStart_ = juce::jmin (rangeDragAnchor_, sample);
+                rangeEnd_ = juce::jmax (rangeDragAnchor_, sample);
+            }
+            else if (dragMode_ == DragMode::moveRangeStart)
+            {
+                rangeStart_ = juce::jmin (sample, rangeEnd_ - kMinRegionSamples);
+            }
+            else
+            {
+                rangeEnd_ = juce::jmax (sample, rangeStart_ + kMinRegionSamples);
+            }
+
+            repaint();
+            return;
+        }
+
+        if (dragRegionIndex_ < 0 || regions_ == nullptr) return;
         if (dragRegionIndex_ >= (int) regions_->size()) return;
 
         auto& r = (*regions_)[(size_t) dragRegionIndex_];
@@ -180,6 +268,13 @@ namespace afq
 
     void WaveformRegionView::mouseUp (const juce::MouseEvent&)
     {
+        if (dragMode_ == DragMode::newRange || dragMode_ == DragMode::moveRangeStart || dragMode_ == DragMode::moveRangeEnd)
+        {
+            if (hasRange() && onRangeSelected) onRangeSelected (rangeStart_, rangeEnd_);
+            dragMode_ = DragMode::none;
+            return;
+        }
+
         if (dragMode_ != DragMode::none && regions_ != nullptr && dragRegionIndex_ >= 0
             && dragRegionIndex_ < (int) regions_->size())
         {

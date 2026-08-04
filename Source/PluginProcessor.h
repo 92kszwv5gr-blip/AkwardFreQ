@@ -8,6 +8,11 @@
 #include "separation/SeparationEngine.h"
 #include "mastering/MasteringChain.h"
 #include "export/SamplePackExporter.h"
+#include "export/SfzExporter.h"
+#include "export/AbletonPresetWriter.h"
+#include "export/DrumRackExporter.h"
+#include "midi/AudioToMidiConverter.h"
+#include "midi/LoopSnapper.h"
 
 namespace afq
 {
@@ -55,11 +60,62 @@ namespace afq
         void stopPreview();
         bool isPreviewActive() const noexcept { return previewActive_.load(); }
 
+        // Loop preview: plays [startSample, endSample) of the currently
+        // loaded/captured track (the raw mix, not a separated layer) on
+        // repeat, replacing live input — for auditioning a MIDI/loop range's
+        // smoothness before committing to it. Independent of startPreview()/
+        // stopPreview() above (that one plays the separated layers once).
+        void startLoopPreview (int64_t startSample, int64_t endSample);
+        void stopLoopPreview();
+        bool isLoopPreviewActive() const noexcept { return loopPreviewActive_.load(); }
+
+        // Snaps a rough range to exactly `bars` bars using the current
+        // track's estimated BPM (falls back to a clamped, un-snapped range if
+        // no separation result / BPM estimate is available yet).
+        LoopSnapper::Result snapLoopRange (int64_t roughStart, int64_t roughEnd, int bars) const;
+
         // Reference / EQ match
         void loadReferenceTrackForMastering (const juce::File& referenceFile);
 
         // Export
         void exportSamplePack (SamplePackExporter::ExportSettings settings);
+
+        // One-shot instrument export: slices [startSample,endSample) out of
+        // the given layer's isolated buffer and writes it as SFZ, and/or (if
+        // a Simpler template is present, see Models/Templates/README.md) as
+        // an Ableton Simpler preset. Runs on a background thread; results
+        // arrive via onInstrumentExportComplete.
+        struct OneShotExportRequest
+        {
+            LayerType sourceLayer = LayerType::SynthLead;
+            int64_t startSample = 0;
+            int64_t endSample = 0;
+            bool writeSfz = true;
+            bool writeAbletonSimpler = false;
+            SfzExporter::Settings sfzSettings;
+            juce::File abletonOutputFile; // only used if writeAbletonSimpler
+            int rootKeyOverride = -1;
+            int lowKey = 0;
+            int highKey = 127;
+        };
+        void exportOneShotInstrument (OneShotExportRequest request);
+
+        // Drum chop/slice export: slices [rangeStart,rangeEnd) into hits and
+        // writes them as named, prefixed .wav files. Set `useRawDrumsBus` to
+        // chop the whole Tier A `drums` stem (before Tier B sub-splitting —
+        // gets you every hit regardless of kick/hat/perc classification);
+        // otherwise `sourceLayer` picks one isolated sub-layer (e.g. just the
+        // kicks). Results arrive via onDrumRackExportComplete.
+        void exportDrumRackFolder (LayerType sourceLayer, bool useRawDrumsBus, int64_t rangeStart, int64_t rangeEnd,
+                                    DrumRackExporter::Settings settings);
+
+        // Audio-to-MIDI: transcribes [startSample,endSample) of the given
+        // layer's isolated buffer (pick a monophonic one — SynthLead or Bass —
+        // for anything usable; see AudioToMidiConverter's docs on why chordal
+        // layers won't transcribe well) and writes a Standard MIDI File.
+        // Results arrive via onMidiExportComplete.
+        void generateMidiFromRange (LayerType sourceLayer, int64_t startSample, int64_t endSample,
+                                     const juce::File& outMidiFile);
 
         // Training data
         void saveCorrectionsForRetraining();
@@ -81,10 +137,15 @@ namespace afq
         // exist as a callback: the audio thread must never invoke arbitrary UI
         // std::functions. Poll getMeasuredLoudnessLufs() from a juce::Timer
         // instead (see MasteringPanel usage in PluginEditor).
+        using SimpleCompleteCallback = std::function<void (bool, juce::String)>;
+
         SeparationProgressCallback onSeparationProgress;
         SeparationCompleteCallback onSeparationComplete;
         ExportProgressCallback onExportProgress;
         ExportCompleteCallback onExportComplete;
+        SimpleCompleteCallback onInstrumentExportComplete;
+        SimpleCompleteCallback onDrumRackExportComplete;
+        SimpleCompleteCallback onMidiExportComplete;
 
         float getMeasuredLoudnessLufs() const { return masteringChain_.getLastMeasuredLoudnessLufs(); }
 
@@ -120,6 +181,14 @@ namespace afq
         std::atomic<bool> previewActive_ { false };
         std::atomic<int64_t> previewPlayheadSample_ { 0 };
         void renderPreviewMix (juce::AudioBuffer<float>& buffer);
+
+        // Loop preview transport (independent of the above — loops a raw
+        // range of currentTrackBuffer_ rather than mixing separated layers).
+        std::atomic<bool> loopPreviewActive_ { false };
+        std::atomic<int64_t> loopStartSample_ { 0 };
+        std::atomic<int64_t> loopEndSample_ { 0 };
+        std::atomic<int64_t> loopPlayheadSample_ { 0 };
+        void renderLoopPreview (juce::AudioBuffer<float>& buffer);
 
         double hostSampleRate_ = 44100.0;
 

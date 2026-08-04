@@ -6,6 +6,9 @@
 #include "ui/RegionListPanel.h"
 #include "ui/MasteringPanel.h"
 #include "ui/ExportPanel.h"
+#include "ui/InstrumentExportPanel.h"
+#include "ui/DrumRackPanel.h"
+#include "ui/MidiPanel.h"
 
 namespace afq
 {
@@ -23,6 +26,16 @@ namespace afq
         // the processor reports separation progress or a completed job.
         void setProgressAndStatus (float progress0to1, const juce::String& message);
         void onSeparationResultReady();
+
+        // Range-selection mode (shared waveform, used by the MIDI/loop and
+        // drum-chop panels — see WaveformRegionView::setRangeSelectionMode).
+        void setRangeSelectionMode (bool enabled);
+        void setSelectedRange (int64_t startSample, int64_t endSample);
+
+        // Fired whenever the region selection or the range selection changes,
+        // so the editor can forward the new selection to the other tabs.
+        std::function<void (LayerType, int64_t, int64_t, bool)> onRegionSelectionChanged;
+        std::function<void (int64_t, int64_t)> onRangeSelectionChanged;
 
     private:
         AkwardFreQProcessor& processor_;
@@ -72,8 +85,19 @@ namespace afq
         AkwardFreQProcessor& processor_;
         juce::TabbedComponent tabs_ { juce::TabbedButtonBar::TabsAtTop };
 
+        // Tracks the Split tab's current range selection (shared by the Drum
+        // Chop and MIDI tabs) so callbacks that only receive a bar count
+        // (snap-to-loop) or a bool (loop preview toggle) still know what
+        // range to act on.
+        int64_t lastRangeStart_ = 0;
+        int64_t lastRangeEnd_ = 0;
+        bool hasRange_ = false;
+
         SplitPanel splitPanel_;
         MasteringPanel masteringPanel_;
         ExportPanel exportPanel_;
+        InstrumentExportPanel instrumentPanel_;
+        DrumRackPanel drumRackPanel_;
+        MidiPanel midiPanel_;
     };
 }

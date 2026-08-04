@@ -73,10 +73,36 @@ namespace afq
         addAndMakeVisible (waveformView_);
         addAndMakeVisible (regionList_);
 
-        waveformView_.onRegionSelected = [this] (int idx) { regionList_.setSelectedRow (idx); };
+        waveformView_.onRegionSelected = [this] (int idx)
+        {
+            regionList_.setSelectedRow (idx);
+            if (! onRegionSelectionChanged) return;
+            if (currentResult_ && idx >= 0 && idx < (int) currentResult_->regions.size())
+            {
+                const auto& r = currentResult_->regions[(size_t) idx];
+                onRegionSelectionChanged (r.type, r.startSample, r.endSample, true);
+            }
+            else
+            {
+                onRegionSelectionChanged (LayerType::Unclassified, 0, 0, false);
+            }
+        };
         waveformView_.onRegionsChanged = [this] { regionList_.refresh(); };
+        waveformView_.onRangeSelected = [this] (int64_t start, int64_t end)
+        {
+            if (onRangeSelectionChanged) onRangeSelectionChanged (start, end);
+        };
 
-        regionList_.onRegionSelected = [this] (int idx) { waveformView_.setSelectedRegionIndex (idx); };
+        regionList_.onRegionSelected = [this] (int idx)
+        {
+            waveformView_.setSelectedRegionIndex (idx);
+            if (! onRegionSelectionChanged) return;
+            if (currentResult_ && idx >= 0 && idx < (int) currentResult_->regions.size())
+            {
+                const auto& r = currentResult_->regions[(size_t) idx];
+                onRegionSelectionChanged (r.type, r.startSample, r.endSample, true);
+            }
+        };
         regionList_.onRegionsChanged = [this] { waveformView_.refresh(); };
         regionList_.onPlayRequested = [this] (int idx) { playSingleRegion (idx); };
         regionList_.onSaveCorrectionsRequested = [this]
@@ -85,6 +111,12 @@ namespace afq
             statusLabel_.setText ("Corrections saved to TrainingData/ for retraining (see tools/retrain_layer_classifier.py).",
                                    juce::dontSendNotification);
         };
+    }
+
+    void SplitPanel::setRangeSelectionMode (bool enabled) { waveformView_.setRangeSelectionMode (enabled); }
+    void SplitPanel::setSelectedRange (int64_t startSample, int64_t endSample)
+    {
+        waveformView_.setSelectedRange (startSample, endSample);
     }
 
     void SplitPanel::setProgressAndStatus (float progress0to1, const juce::String& message)
@@ -165,6 +197,9 @@ namespace afq
         tabs_.addTab ("Split", juce::Colour (0xff1e1e1e), &splitPanel_, false);
         tabs_.addTab ("Master", juce::Colour (0xff1e1e1e), &masteringPanel_, false);
         tabs_.addTab ("Export", juce::Colour (0xff1e1e1e), &exportPanel_, false);
+        tabs_.addTab ("Instrument", juce::Colour (0xff1e1e1e), &instrumentPanel_, false);
+        tabs_.addTab ("Drum Chop", juce::Colour (0xff1e1e1e), &drumRackPanel_, false);
+        tabs_.addTab ("MIDI", juce::Colour (0xff1e1e1e), &midiPanel_, false);
 
         processor_.onSeparationProgress = [this] (float p, juce::String msg)
         {
@@ -180,6 +215,9 @@ namespace afq
 
         processor_.onExportProgress = [this] (float p, juce::String msg) { exportPanel_.setProgress (p, msg); };
         processor_.onExportComplete = [this] (bool ok, juce::String msg) { exportPanel_.setComplete (ok, msg); };
+        processor_.onInstrumentExportComplete = [this] (bool ok, juce::String msg) { instrumentPanel_.setComplete (ok, msg); };
+        processor_.onDrumRackExportComplete = [this] (bool ok, juce::String msg) { drumRackPanel_.setComplete (ok, msg); };
+        processor_.onMidiExportComplete = [this] (bool ok, juce::String msg) { midiPanel_.setComplete (ok, msg); };
 
         masteringPanel_.onLoadReferenceTrack = [this] (juce::File f)
         {
@@ -192,6 +230,68 @@ namespace afq
             processor_.exportSamplePack (settings);
         };
 
+        // Split tab's region selection feeds the Instrument tab (one-shot
+        // export always operates on "whatever region is currently selected").
+        splitPanel_.onRegionSelectionChanged = [this] (LayerType type, int64_t start, int64_t end, bool hasSelection)
+        {
+            instrumentPanel_.setSelectedRegion (type, start, end, hasSelection);
+        };
+
+        // Split tab's range selection (a separate mode from region correction)
+        // feeds both the Drum Chop and MIDI tabs, and is the single source of
+        // truth this editor uses for snap-to-loop / loop-preview / MIDI
+        // generation, all of which only receive a bar-count or bool from
+        // their panel and need to know the "current range" themselves.
+        splitPanel_.onRangeSelectionChanged = [this] (int64_t start, int64_t end)
+        {
+            lastRangeStart_ = start;
+            lastRangeEnd_ = end;
+            hasRange_ = true;
+            drumRackPanel_.setSelectedRange (start, end, true);
+            midiPanel_.setSelectedRange (start, end, true);
+        };
+
+        instrumentPanel_.onExportRequested = [this] (AkwardFreQProcessor::OneShotExportRequest request)
+        {
+            processor_.exportOneShotInstrument (request);
+        };
+
+        drumRackPanel_.onExportRequested = [this] (LayerType layer, bool useRawBus, int64_t start, int64_t end,
+                                                     DrumRackExporter::Settings settings)
+        {
+            processor_.exportDrumRackFolder (layer, useRawBus, start, end, settings);
+        };
+
+        midiPanel_.onRangeSelectionModeToggled = [this] (bool enabled) { splitPanel_.setRangeSelectionMode (enabled); };
+
+        midiPanel_.onSnapToLoopRequested = [this] (int bars)
+        {
+            if (! hasRange_) return; // MidiPanel already guards this, belt-and-suspenders here
+            const auto snapped = processor_.snapLoopRange (lastRangeStart_, lastRangeEnd_, bars);
+
+            lastRangeStart_ = snapped.startSample;
+            lastRangeEnd_ = snapped.endSample;
+
+            splitPanel_.setSelectedRange (snapped.startSample, snapped.endSample);
+            drumRackPanel_.setSelectedRange (snapped.startSample, snapped.endSample, true);
+            midiPanel_.setSelectedRange (snapped.startSample, snapped.endSample, true);
+            midiPanel_.setComplete (snapped.snapped, snapped.snapped
+                ? ("Snapped to " + juce::String (bars) + " bars.")
+                : "Couldn't snap (no BPM estimate yet, or range too long) — using the range as-is.");
+        };
+
+        midiPanel_.onLoopPreviewToggled = [this] (bool enabled)
+        {
+            if (enabled && hasRange_) processor_.startLoopPreview (lastRangeStart_, lastRangeEnd_);
+            else processor_.stopLoopPreview();
+            midiPanel_.setLoopPreviewActive (processor_.isLoopPreviewActive());
+        };
+
+        midiPanel_.onGenerateMidiRequested = [this] (LayerType layer, juce::File outFile)
+        {
+            processor_.generateMidiFromRange (layer, lastRangeStart_, lastRangeEnd_, outFile);
+        };
+
         startTimerHz (4);
     }
 
@@ -202,6 +302,9 @@ namespace afq
         processor_.onSeparationComplete = nullptr;
         processor_.onExportProgress = nullptr;
         processor_.onExportComplete = nullptr;
+        processor_.onInstrumentExportComplete = nullptr;
+        processor_.onDrumRackExportComplete = nullptr;
+        processor_.onMidiExportComplete = nullptr;
     }
 
     void AkwardFreQEditor::timerCallback()
