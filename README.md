@@ -359,9 +359,11 @@ A real Windows `.vst3` and `.exe` (the actual VST3 target, and its
 Standalone counterpart) have also been produced directly from this Linux
 container, by cross-compiling with mingw-w64 (`toolchain-mingw64.cmake`) —
 confirmed as genuine `PE32+` Windows binaries (`file` reports
-`PE32+ executable (DLL)` / `PE32+ executable (GUI)`), not just a clean
-configure. Getting there required two real fixes, both scoped to mingw only
-so a normal MSVC build is untouched:
+`PE32+ executable (DLL)` / `PE32+ executable (GUI)`), and the build completes
+cleanly end-to-end (`cmake --build`, exit code 0), including a correctly
+generated `moduleinfo.json` VST3 manifest — not just a partial/clean
+configure. Getting there required several real fixes, all scoped to mingw
+only so a normal MSVC build is untouched:
 
 - ONNX Runtime's C API headers assume MSVC: `ORT_API_CALL` expands to the
   single-underscore `_stdcall` (mingw only recognizes `__stdcall`), and they
@@ -369,22 +371,37 @@ so a normal MSVC build is untouched:
   `sal.h` doesn't fully define. Both are shimmed in
   `Source/separation/OnnxMingwShim.h`, included before the ONNX Runtime
   headers in `DemucsEngine.cpp`/`LayerClassifier.cpp`.
+- By default the resulting binaries dynamically linked against
+  `libgcc_s_seh-1.dll`, `libstdc++-6.dll`, and `libwinpthread-1.dll` from the
+  mingw toolchain itself — DLLs that don't exist on a real Windows install,
+  which would make the plugin fail to load in Ableton with a missing-DLL
+  error. `toolchain-mingw64.cmake` statically links all three
+  (`-static-libgcc -static-libstdc++ -static -lwinpthread`), leaving
+  `onnxruntime.dll` (already documented as shipping alongside the plugin) as
+  the only external runtime dependency — verified with `objdump -p`.
 - JUCE's VST3 manifest helper (`juce_vst3_helper`) is itself cross-compiled
-  to a Windows `.exe`, which can't execute on the Linux host to generate the
-  optional `moduleinfo.json` scan-acceleration manifest during the build —
-  that step fails, but the actual plugin binary links and completes
-  regardless; `moduleinfo.json` is a VST3 SDK 3.7+ convenience for faster
-  host scanning, not required for a host to load the module. Running the
-  build under Wine, or on a real Windows/MSVC toolchain, would generate it.
+  to a Windows `.exe`, which can't execute natively on the Linux host to
+  generate `moduleinfo.json` (a VST3 SDK 3.7+ manifest that speeds up host
+  scanning). Fixed by pointing `CMAKE_CROSSCOMPILING_EMULATOR` at Wine
+  (installed via `apt-get install wine64`) in the toolchain file — CMake then
+  runs the cross-compiled helper for real. This needs `DISPLAY` set to a
+  running X server (Wine's COM/OLE subsystem wants one even for headless
+  tools — `Xvfb` works fine) and `onnxruntime.dll` present in the build
+  directory root (the helper loads the freshly-built plugin DLL to
+  introspect its real VST3 factory/class IDs, which needs `onnxruntime.dll`
+  resolvable). The generated `moduleinfo.json` reflects the actual compiled
+  plugin's real class IDs/categories — genuine introspection through Wine,
+  not a stub.
 
-A third, environment-level issue (not fixable from repo code) shows up on
+A fourth, environment-level issue (not fixable from repo code) shows up on
 Linux specifically because its filesystem is case-sensitive: part of the
 VST3 SDK includes `<Windows.h>` (capital W), but mingw-w64 only ships
 `windows.h` (lowercase), so it fails to find it. Fixed for this container by
 adding a same-directory symlink —
 `ln -s windows.h /usr/x86_64-w64-mingw32/include/Windows.h` — before
 building; anyone reproducing this cross-build path on their own Linux box
-will need the same one-time symlink.
+will need the same one-time symlink, plus Wine and a running `DISPLAY` for
+the `moduleinfo.json` step above.
 
 This cross-build path is a convenience for CI/dev containers without a
 Windows machine — `Visual Studio + the steps above` remains the reliable,

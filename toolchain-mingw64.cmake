@@ -33,3 +33,17 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static -lwinpthread")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static -lwinpthread")
 set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static -lwinpthread")
+
+# JUCE's own build step runs a cross-compiled Windows helper tool
+# (juce_vst3_helper.exe) to generate moduleinfo.json, an optional VST3
+# scan-acceleration manifest. That tool can't execute natively on Linux;
+# point CMake at Wine as its emulator so this step runs for real instead of
+# being skipped. Requires: `wine` installed, DISPLAY set to a running X
+# server (even headless, e.g. Xvfb — Wine's COM/OLE subsystem needs one),
+# and onnxruntime.dll present in the build directory root (the helper loads
+# the freshly-built plugin DLL to introspect it, which in turn needs
+# onnxruntime.dll on its search path).
+find_program(WINE_EMULATOR wine-quiet wine)
+if (WINE_EMULATOR)
+    set(CMAKE_CROSSCOMPILING_EMULATOR "${WINE_EMULATOR}")
+endif()
