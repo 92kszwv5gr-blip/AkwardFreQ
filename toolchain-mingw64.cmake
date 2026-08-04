@@ -23,3 +23,13 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 set(CMAKE_CXX_STANDARD 17)
+
+# Without this, every binary dynamically links libgcc_s_seh-1.dll,
+# libstdc++-6.dll, and libwinpthread-1.dll from the mingw runtime — DLLs a
+# real Windows machine (and Ableton) won't have installed, so the plugin
+# would fail to load with a missing-DLL error. Static-link the toolchain's
+# own runtime so the only external runtime dependency left is onnxruntime.dll
+# (already documented as something that ships alongside the plugin).
+set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static -lwinpthread")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static -lwinpthread")
+set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static -lwinpthread")
