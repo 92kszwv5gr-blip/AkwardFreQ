@@ -25,6 +25,7 @@ namespace afq
             juce::String genreTag;
             int minRegionLengthMs = 30;   // skip slivers shorter than this
             bool writeManifest = true;
+            juce::StringPairArray metadata; // RIFF INFO tags — see MetadataTags.h
         };
 
         // Runs synchronously — does file I/O for potentially hundreds of small

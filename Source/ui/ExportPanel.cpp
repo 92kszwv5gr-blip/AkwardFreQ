@@ -50,6 +50,7 @@ namespace afq
             settings.destinationFolder = destinationFolder_;
             settings.packName = packNameEditor_.getText().isNotEmpty() ? packNameEditor_.getText() : "AkwardFreQ Pack";
             settings.genreTag = genreCombo_.getText();
+            settings.metadata = metadataPanel_.getMetadata().toRiffTags();
             onExportRequested (settings);
         };
 
@@ -69,11 +70,13 @@ namespace afq
         };
 
         addAndMakeVisible (vstChainPanel_);
+        addAndMakeVisible (metadataPanel_);
     }
 
     void ExportPanel::setTrackInfo (double bpm, const juce::String& key)
     {
         infoLabel_.setText (juce::String::formatted ("Detected: %.0f BPM, ", bpm) + key, juce::dontSendNotification);
+        metadataPanel_.setAnalysisInfo (bpm, key);
     }
 
     void ExportPanel::setProgress (float progress0to1, const juce::String& message)
@@ -108,6 +111,9 @@ namespace afq
         chooseFolderButton_.setBounds (folderRow.removeFromLeft (180));
         folderRow.removeFromLeft (8);
         destinationLabel_.setBounds (folderRow);
+
+        area.removeFromTop (10);
+        metadataPanel_.setBounds (area.removeFromTop (100));
 
         area.removeFromTop (12);
         exportButton_.setBounds (area.removeFromTop (32));

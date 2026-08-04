@@ -54,11 +54,11 @@ namespace afq
                     rawSlice.copyFrom (ch, 0, sourceBuffer, ch, (int) s.startSample, len);
 
                 const auto rendered = BatchVstRenderer::render (rawSlice, sampleRate, *vstChain);
-                ok = writeWavSlice (rendered, 0, rendered.getNumSamples(), sampleRate, outFile, sliceError);
+                ok = writeWavSlice (rendered, 0, rendered.getNumSamples(), sampleRate, outFile, sliceError, settings.metadata);
             }
             else
             {
-                ok = writeWavSlice (sourceBuffer, s.startSample, s.endSample, sampleRate, outFile, sliceError);
+                ok = writeWavSlice (sourceBuffer, s.startSample, s.endSample, sampleRate, outFile, sliceError, settings.metadata);
             }
 
             if (ok) ++written;

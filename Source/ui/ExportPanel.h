@@ -4,6 +4,7 @@
 #include <functional>
 #include "../export/SamplePackExporter.h"
 #include "PluginChainPanel.h"
+#include "MetadataPanel.h"
 
 namespace afq
 {
@@ -37,6 +38,8 @@ namespace afq
         juce::ProgressBar progressBar_ { progressValue_ };
         juce::Label statusLabel_;
         juce::Label infoLabel_ { {}, "No track analyzed yet" };
+
+        MetadataPanel metadataPanel_;
 
         juce::ToggleButton useVstChainToggle_ { "Batch-render through VST chain before exporting" };
         PluginChainPanel vstChainPanel_;

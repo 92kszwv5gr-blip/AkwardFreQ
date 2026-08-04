@@ -58,7 +58,12 @@ between the C++ classifier and the Python retraining script.
   **Onset-Detected** (follows transients, the original behavior) or **Equal
   Slices** (mechanically divides the range into exactly N pieces via a single
   "Slices" knob, 1–64) — useful on material with weak transients, or when you
-  just want even N-way chops regardless of what's actually in the audio.
+  just want even N-way chops regardless of what's actually in the audio. A
+  live waveform with slice markers (`SliceMarkerView`) redraws as you change
+  mode/knob/layer/range, ReCycle/SliceX/Renoise-style — this is a genuine
+  visual preview, not just a knob and a hope: click a marker to select that
+  slice, then either export the whole batch or send just that one slice
+  straight to the Instrument tab as a one-shot.
 - **MIDI tab**: pick a range on the Split tab's waveform (toggle "Pick Range
   on Waveform"), optionally snap it to a clean 2/4/8/16-bar loop, use "Loop
   Preview" to hear it repeat before committing, then transcribe it to a
@@ -78,6 +83,32 @@ Simpler export fails with a clear error; SFZ and folder export always work
 regardless. Drum Rack (`.adg`) export isn't implemented at all yet for the
 same reason, at a scale where guessing wrong is more likely — folder export
 of chopped hits is the reliable path there.
+
+### Tagging exports (Export / Instrument / Drum Chop tabs)
+
+Every export tab has a small tag panel — title/artist/genre/comment fields,
+plus AkwardFreQ's own detected BPM/key shown read-only and included
+automatically. Fill in what you want and it's written into every `.wav` that
+export writes.
+
+This is **local tagging only, by design** — no network calls, no API key,
+nothing leaves your machine. We looked at MusicBrainz/AcoustID (Chromaprint
+fingerprinting against their free database, which could auto-identify a
+source track and prefill tags from it) but that requires reaching out to a
+third-party service on every export, which isn't something a plugin should
+do without being asked; it's a reasonable feature to add later behind an
+explicit opt-in, not something scoped into this pass.
+
+It's also worth being precise about what "tagging a WAV" actually means:
+**true ID3v2 is an MP3-native spec** and doesn't apply to WAV files at all.
+The practical WAV equivalent — what this feature actually writes — is the
+**RIFF INFO chunk**, WAV's own standard tagging mechanism (`INAM`/`IART`/
+`IGNR`/`ICMT`/`ISFT` for title/artist/genre/comment/software), which is what
+Ableton's own sample browser and most other DAWs/players read. BPM and key
+get folded into the comment field (`ICMT`) as plain text, since `ICMT` is
+universally recognized — key is *also* written as `IKEY`, but that FourCC
+isn't part of the guaranteed-standard RIFF INFO set, so the comment field is
+the fallback that's certain to show up somewhere.
 
 ### Hosting your own VST3 plugins (Mastering and Export tabs)
 

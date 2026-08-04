@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <functional>
 #include "../PluginProcessor.h"
+#include "MetadataPanel.h"
 
 namespace afq
 {
@@ -16,8 +17,10 @@ namespace afq
     public:
         InstrumentExportPanel();
 
-        void setSelectedRegion (LayerType type, int64_t startSample, int64_t endSample, bool hasSelection);
+        void setSelectedRegion (LayerType type, int64_t startSample, int64_t endSample, bool hasSelection,
+                                 bool useRawDrumsBus = false);
         void setComplete (bool ok, const juce::String& message);
+        void setAnalysisInfo (double bpm, const juce::String& key);
 
         std::function<void (AkwardFreQProcessor::OneShotExportRequest)> onExportRequested;
 
@@ -35,12 +38,14 @@ namespace afq
         juce::ToggleButton autoRootToggle_ { "Auto-detect root note" };
         juce::Slider rootKeySlider_, lowKeySlider_, highKeySlider_;
         juce::Label rootKeyLabel_ { {}, "Root Key" }, lowKeyLabel_ { {}, "Low Key" }, highKeyLabel_ { {}, "High Key" };
+        MetadataPanel metadataPanel_;
         juce::TextButton exportButton_ { "Export One-Shot" };
         juce::Label statusLabel_;
 
         LayerType selectedType_ = LayerType::SynthLead;
         int64_t selectedStart_ = 0, selectedEnd_ = 0;
         bool hasSelection_ = false;
+        bool useRawDrumsBus_ = false;
         juce::File destinationFolder_;
         std::unique_ptr<juce::FileChooser> fileChooser_;
     };

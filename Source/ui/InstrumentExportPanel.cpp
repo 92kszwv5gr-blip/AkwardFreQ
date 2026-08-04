@@ -82,6 +82,7 @@ namespace afq
 
             AkwardFreQProcessor::OneShotExportRequest request;
             request.sourceLayer = selectedType_;
+            request.useRawDrumsBus = useRawDrumsBus_;
             request.startSample = selectedStart_;
             request.endSample = selectedEnd_;
             request.writeSfz = writeSfzToggle_.getToggleState();
@@ -93,6 +94,7 @@ namespace afq
             request.sfzSettings.destinationFolder = destinationFolder_;
             request.sfzSettings.instrumentName = nameEditor_.getText().isNotEmpty() ? nameEditor_.getText() : "AkwardFreQ One-Shot";
             request.sfzSettings.prefix = prefixEditor_.getText();
+            request.metadata = metadataPanel_.getMetadata().toRiffTags();
 
             if (request.writeAbletonSimpler)
             {
@@ -106,19 +108,29 @@ namespace afq
             statusLabel_.setText ("Exporting...", juce::dontSendNotification);
         };
 
+        addAndMakeVisible (metadataPanel_);
+
         addAndMakeVisible (statusLabel_);
         statusLabel_.setFont (12.0f);
     }
 
-    void InstrumentExportPanel::setSelectedRegion (LayerType type, int64_t startSample, int64_t endSample, bool hasSelection)
+    void InstrumentExportPanel::setAnalysisInfo (double bpm, const juce::String& key)
+    {
+        metadataPanel_.setAnalysisInfo (bpm, key);
+    }
+
+    void InstrumentExportPanel::setSelectedRegion (LayerType type, int64_t startSample, int64_t endSample, bool hasSelection,
+                                                     bool useRawDrumsBus)
     {
         selectedType_ = type;
         selectedStart_ = startSample;
         selectedEnd_ = endSample;
         hasSelection_ = hasSelection;
+        useRawDrumsBus_ = useRawDrumsBus;
 
+        const juce::String sourceLabel = useRawDrumsBus ? juce::String ("Drums Bus slice") : layerName (type);
         selectionLabel_.setText (hasSelection
-            ? ("Selected: " + layerName (type) + " (" + juce::String ((endSample - startSample) / 44.1 / 1000.0, 2) + "s)")
+            ? ("Selected: " + sourceLabel + " (" + juce::String ((endSample - startSample) / 44.1 / 1000.0, 2) + "s)")
             : juce::String ("No region selected — pick one in the Split tab"), juce::dontSendNotification);
     }
 
@@ -166,6 +178,9 @@ namespace afq
         layoutKey (rootKeyLabel_, rootKeySlider_);
         layoutKey (lowKeyLabel_, lowKeySlider_);
         layoutKey (highKeyLabel_, highKeySlider_);
+
+        area.removeFromTop (10);
+        metadataPanel_.setBounds (area.removeFromTop (100));
 
         area.removeFromTop (12);
         exportButton_.setBounds (area.removeFromTop (32));

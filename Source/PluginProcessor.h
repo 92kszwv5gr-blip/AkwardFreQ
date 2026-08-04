@@ -90,6 +90,7 @@ namespace afq
         struct OneShotExportRequest
         {
             LayerType sourceLayer = LayerType::SynthLead;
+            bool useRawDrumsBus = false; // sourceLayer ignored when true — sources from the unsplit `drums` bus
             int64_t startSample = 0;
             int64_t endSample = 0;
             bool writeSfz = true;
@@ -99,6 +100,7 @@ namespace afq
             int rootKeyOverride = -1;
             int lowKey = 0;
             int highKey = 127;
+            juce::StringPairArray metadata; // RIFF INFO tags — see export/MetadataTags.h
         };
         void exportOneShotInstrument (OneShotExportRequest request);
 

@@ -187,7 +187,8 @@ namespace afq
 
     //==============================================================================
     AkwardFreQEditor::AkwardFreQEditor (AkwardFreQProcessor& p)
-        : juce::AudioProcessorEditor (&p), processor_ (p), splitPanel_ (p), masteringPanel_ (p), exportPanel_ (p)
+        : juce::AudioProcessorEditor (&p), processor_ (p), splitPanel_ (p), masteringPanel_ (p), exportPanel_ (p),
+          drumRackPanel_ (p)
     {
         setResizable (true, true);
         setResizeLimits (760, 560, 1600, 1200);
@@ -209,8 +210,13 @@ namespace afq
         processor_.onSeparationComplete = [this]
         {
             splitPanel_.onSeparationResultReady();
+            drumRackPanel_.onSeparationResultReady();
             if (auto result = processor_.getLatestResultForUI())
+            {
                 exportPanel_.setTrackInfo (result->estimatedBpm, result->estimatedKey);
+                instrumentPanel_.setAnalysisInfo (result->estimatedBpm, result->estimatedKey);
+                drumRackPanel_.setAnalysisInfo (result->estimatedBpm, result->estimatedKey);
+            }
         };
 
         processor_.onExportProgress = [this] (float p, juce::String msg) { exportPanel_.setProgress (p, msg); };
@@ -260,6 +266,15 @@ namespace afq
                                                      DrumRackExporter::Settings settings)
         {
             processor_.exportDrumRackFolder (layer, useRawBus, start, end, settings);
+        };
+
+        // A slice selected in the Drum Chop preview can be sent straight to
+        // the Instrument tab as a one-shot, same as selecting a region on the
+        // Split tab — closes the slicer -> one-shot -> instrument loop.
+        drumRackPanel_.onSendSliceToInstrument = [this] (LayerType layer, bool useRawBus, int64_t start, int64_t end)
+        {
+            instrumentPanel_.setSelectedRegion (layer, start, end, true, useRawBus);
+            tabs_.setCurrentTabIndex (3); // Instrument tab — see addTab order above
         };
 
         midiPanel_.onRangeSelectionModeToggled = [this] (bool enabled) { splitPanel_.setRangeSelectionMode (enabled); };

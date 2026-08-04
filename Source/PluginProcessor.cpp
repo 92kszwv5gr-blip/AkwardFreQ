@@ -236,11 +236,11 @@ namespace afq
             return;
         }
 
-        const auto& layerBuffer = result->layerBuffers[(size_t) request.sourceLayer];
-        if (layerBuffer.getNumSamples() == 0)
+        const auto& sourceBuffer = request.useRawDrumsBus ? result->drumsBuffer : result->layerBuffers[(size_t) request.sourceLayer];
+        if (sourceBuffer.getNumSamples() == 0)
         {
-            if (onInstrumentExportComplete)
-                onInstrumentExportComplete (false, layerName (request.sourceLayer) + " has no isolated audio to export.");
+            const auto what = request.useRawDrumsBus ? juce::String ("drums bus") : layerName (request.sourceLayer);
+            if (onInstrumentExportComplete) onInstrumentExportComplete (false, what + " has no isolated audio to export.");
             return;
         }
 
@@ -248,7 +248,7 @@ namespace afq
         const bool useVstChain = useExportVstChain_.load();
         std::thread worker ([this, result, request, sampleRate, useVstChain]() mutable
         {
-            const auto& src = result->layerBuffers[(size_t) request.sourceLayer];
+            const auto& src = request.useRawDrumsBus ? result->drumsBuffer : result->layerBuffers[(size_t) request.sourceLayer];
 
             // Clean up once (trim dead air, normalize, fade edges), optionally
             // batch-render through the export VST chain, and reuse that same
@@ -268,6 +268,7 @@ namespace afq
                 settings.rootKeyOverride = request.rootKeyOverride;
                 settings.lowKey = request.lowKey;
                 settings.highKey = request.highKey;
+                settings.metadata = request.metadata;
                 ok = SfzExporter::exportOneShot (cleaned, cleanedStart, cleanedEnd, sampleRate, settings, error);
             }
 
@@ -287,7 +288,7 @@ namespace afq
                 else
                 {
                     wavFile = request.abletonOutputFile.getSiblingFile (request.abletonOutputFile.getFileNameWithoutExtension() + ".wav");
-                    ok = writeWavSlice (cleaned, cleanedStart, cleanedEnd, sampleRate, wavFile, error);
+                    ok = writeWavSlice (cleaned, cleanedStart, cleanedEnd, sampleRate, wavFile, error, request.metadata);
                 }
 
                 if (ok)

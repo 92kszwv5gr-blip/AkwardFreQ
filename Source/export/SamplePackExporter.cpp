@@ -14,7 +14,8 @@ namespace afq
         }
 
         bool writeWav (const juce::AudioBuffer<float>& source, int64_t startSample, int64_t endSample,
-                        double sampleRate, const juce::File& outFile, PluginChain* vstChain)
+                        double sampleRate, const juce::File& outFile, PluginChain* vstChain,
+                        const juce::StringPairArray& metadata)
         {
             const int len = (int) (endSample - startSample);
             if (len <= 0) return false;
@@ -38,7 +39,7 @@ namespace afq
             juce::WavAudioFormat wavFormat;
             std::unique_ptr<juce::AudioFormatWriter> writer (
                 wavFormat.createWriterFor (stream.get(), sampleRate, (unsigned int) toWrite.getNumChannels(),
-                                            24, {}, 0));
+                                            24, metadata, 0));
             if (writer == nullptr) return false;
 
             stream.release(); // writer now owns the stream
@@ -100,7 +101,7 @@ namespace afq
             const juce::File layerFolder = packRoot.getChildFile (layerName (region.type));
             const juce::File outFile = layerFolder.getChildFile (fileName);
 
-            if (! writeWav (sourceBuffer, region.startSample, region.endSample, result.sampleRate, outFile, vstChain))
+            if (! writeWav (sourceBuffer, region.startSample, region.endSample, result.sampleRate, outFile, vstChain, settings.metadata))
                 continue; // skip failures, keep exporting the rest of the pack
 
             ++exportedCount;

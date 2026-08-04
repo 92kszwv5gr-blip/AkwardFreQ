@@ -101,6 +101,8 @@ target_sources(AkwardFreQ PRIVATE
     Source/ui/DrumRackPanel.cpp
     Source/ui/MidiPanel.cpp
     Source/ui/PluginChainPanel.cpp
+    Source/ui/SliceMarkerView.cpp
+    Source/ui/MetadataPanel.cpp
 
     Source/vsthost/PluginScanner.cpp
     Source/vsthost/HostedPluginSlot.cpp

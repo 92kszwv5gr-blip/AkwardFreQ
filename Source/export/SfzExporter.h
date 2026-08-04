@@ -19,6 +19,7 @@ namespace afq
             int lowKey = 0;             // MIDI note 0-127, key range the sample is stretched/mapped across
             int highKey = 127;
             int rootKeyOverride = -1;   // -1 = auto-detect via pitch tracking; otherwise a fixed MIDI note
+            juce::StringPairArray metadata; // RIFF INFO tags — see MetadataTags.h
         };
 
         // Writes <destinationFolder>/<prefix><instrumentName>/ containing the

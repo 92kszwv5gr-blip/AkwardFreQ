@@ -64,7 +64,8 @@ namespace afq
 
             juce::WavAudioFormat wavFormat;
             std::unique_ptr<juce::AudioFormatWriter> writer (
-                wavFormat.createWriterFor (stream.get(), sampleRate, (unsigned int) sourceBuffer.getNumChannels(), 24, {}, 0));
+                wavFormat.createWriterFor (stream.get(), sampleRate, (unsigned int) sourceBuffer.getNumChannels(),
+                                            24, settings.metadata, 0));
             if (writer == nullptr)
             {
                 errorMessage = "Could not create WAV writer for " + wavFile.getFullPathName();

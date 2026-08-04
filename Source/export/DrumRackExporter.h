@@ -26,6 +26,7 @@ namespace afq
             juce::String prefix;
             SliceMode mode = SliceMode::OnsetDetected;
             int sliceCount = 16; // only used when mode == Equal
+            juce::StringPairArray metadata; // RIFF INFO tags — see MetadataTags.h
         };
 
         // `rangeEndSample <= rangeStartSample` slices the whole buffer.
