@@ -52,7 +52,10 @@ juce_add_plugin(AkwardFreQ
     COMPANY_NAME                "AkwardFreQ"
     PLUGIN_MANUFACTURER_CODE    Akfq
     PLUGIN_CODE                 Akf1
-    FORMATS                     VST3
+    # Standalone runs the exact same PluginProcessor/PluginEditor code as its
+    # own app (own window, own audio I/O via JUCE's AudioDeviceManager) rather
+    # than needing a DAW host — useful for testing/demoing without Ableton.
+    FORMATS                     VST3 Standalone
     PRODUCT_NAME                "AkwardFreQ"
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
@@ -134,6 +137,10 @@ target_link_libraries(AkwardFreQ
         juce::juce_audio_basics
         juce::juce_audio_processors
         juce::juce_audio_formats
+        # Only needed for the Standalone format (its own AudioDeviceManager/
+        # window rather than a DAW host) — VST3 never touches these.
+        juce::juce_audio_devices
+        juce::juce_audio_utils
         juce::juce_dsp
         juce::juce_gui_basics
         juce::juce_gui_extra

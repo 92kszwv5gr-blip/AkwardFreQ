@@ -210,11 +210,13 @@ namespace afq
         }
         {
             juce::dsp::AudioBlock<float> blk (bandBuffers_[0]);
-            juce::dsp::ProcessContextReplacing<float> ctx (blk.getSubBlock (0, (size_t) numSamples));
+            auto blkSub = blk.getSubBlock (0, (size_t) numSamples);
+            juce::dsp::ProcessContextReplacing<float> ctx (blkSub);
             lowpassSplits_[0].process (ctx);
 
             juce::dsp::AudioBlock<float> blkHp (stageScratchA_);
-            juce::dsp::ProcessContextReplacing<float> ctxHp (blkHp.getSubBlock (0, (size_t) numSamples));
+            auto blkHpSub = blkHp.getSubBlock (0, (size_t) numSamples);
+            juce::dsp::ProcessContextReplacing<float> ctxHp (blkHpSub);
             highpassSplits_[0].process (ctxHp);
         }
 
@@ -225,11 +227,13 @@ namespace afq
         }
         {
             juce::dsp::AudioBlock<float> blk (bandBuffers_[1]);
-            juce::dsp::ProcessContextReplacing<float> ctx (blk.getSubBlock (0, (size_t) numSamples));
+            auto blkSub = blk.getSubBlock (0, (size_t) numSamples);
+            juce::dsp::ProcessContextReplacing<float> ctx (blkSub);
             lowpassSplits_[1].process (ctx);
 
             juce::dsp::AudioBlock<float> blkHp (stageScratchB_);
-            juce::dsp::ProcessContextReplacing<float> ctxHp (blkHp.getSubBlock (0, (size_t) numSamples));
+            auto blkHpSub = blkHp.getSubBlock (0, (size_t) numSamples);
+            juce::dsp::ProcessContextReplacing<float> ctxHp (blkHpSub);
             highpassSplits_[1].process (ctxHp);
         }
 
@@ -240,11 +244,13 @@ namespace afq
         }
         {
             juce::dsp::AudioBlock<float> blk2 (bandBuffers_[2]);
-            juce::dsp::ProcessContextReplacing<float> ctx2 (blk2.getSubBlock (0, (size_t) numSamples));
+            auto blk2Sub = blk2.getSubBlock (0, (size_t) numSamples);
+            juce::dsp::ProcessContextReplacing<float> ctx2 (blk2Sub);
             lowpassSplits_[2].process (ctx2);
 
             juce::dsp::AudioBlock<float> blk3 (bandBuffers_[3]);
-            juce::dsp::ProcessContextReplacing<float> ctx3 (blk3.getSubBlock (0, (size_t) numSamples));
+            auto blk3Sub = blk3.getSubBlock (0, (size_t) numSamples);
+            juce::dsp::ProcessContextReplacing<float> ctx3 (blk3Sub);
             highpassSplits_[2].process (ctx3);
         }
 
@@ -252,7 +258,8 @@ namespace afq
         for (int b = 0; b < kNumBands; ++b)
         {
             juce::dsp::AudioBlock<float> blk (bandBuffers_[(size_t) b]);
-            juce::dsp::ProcessContextReplacing<float> ctx (blk.getSubBlock (0, (size_t) numSamples));
+            auto blkSub = blk.getSubBlock (0, (size_t) numSamples);
+            juce::dsp::ProcessContextReplacing<float> ctx (blkSub);
             bandCompressors_[(size_t) b].process (ctx);
         }
 
@@ -297,7 +304,8 @@ namespace afq
         limiter_.setThreshold (settings_.limiterCeilingDb);
         {
             juce::dsp::AudioBlock<float> block (buffer);
-            juce::dsp::ProcessContextReplacing<float> ctx (block.getSubBlock (0, (size_t) numSamples));
+            auto blockSub = block.getSubBlock (0, (size_t) numSamples);
+            juce::dsp::ProcessContextReplacing<float> ctx (blockSub);
             limiter_.process (ctx);
         }
     }

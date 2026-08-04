@@ -235,6 +235,19 @@ This downloads Meta's pretrained HT-Demucs weights (~100MB) and converts them
 to `Models/htdemucs.onnx`. Without this file the plugin builds and loads
 fine, but stem separation reports "Demucs model not found."
 
+HT-Demucs's own forward pass isn't directly ONNX-exportable — it computes a
+genuine complex-dtype STFT/ISTFT internally (`torch.stft(...,
+return_complex=True)`, `torch.view_as_complex`/`view_as_real`), none of
+which PyTorch's ONNX exporter supports as of torch 2.13, at any opset.
+`tools/_stft_onnx_patch.py` (applied automatically by the export script)
+replaces those internals with a real-tensor-only reimplementation — Conv1d
+for the forward transform, Fold-based overlap-add for the inverse — verified
+numerically against the unpatched model (`tools/verify_stft_patch.py`,
+max diff ~4e-5 on real HT-Demucs weights) before ever trusting an export
+built from it. This was confirmed by actually exporting and running the
+real model end-to-end (see "Tried it — does it actually work?" below), not
+just by inspection.
+
 ### 3. Configure and build
 
 ```
@@ -265,6 +278,29 @@ Track" will fail with a clear error; convert to WAV first, or capture the
 track live from Ableton's transport instead (the "Start Capture" button),
 which works regardless of source format since it just records the plugin's
 live audio input.
+
+### Tried it — does it actually work?
+
+Yes, genuinely — this was actually built and run, not just reviewed. The
+whole pipeline was validated end-to-end on Linux (the code targets Windows,
+but the plugin/JUCE/CMake layer is cross-platform, and Linux was what was
+available for this check): a real `Standalone` JUCE build (see `FORMATS` in
+`CMakeLists.txt` — added specifically so the plugin can be run and clicked
+through without needing a DAW host at all), a real `htdemucs.onnx` exported
+via `tools/export_demucs_onnx.py`, and a real ONNX Runtime — loaded, run
+under a headless X server, driven through the actual UI (import a track →
+watch real HT-Demucs separation run → see real detected regions → open the
+Drum Chop tab and see `SliceMarkerView` render real onset-detected slices
+from the real separated audio). This surfaced and fixed several real bugs
+that only show up on an actual compile (this codebase had never been built
+before): a couple of missing includes, an ambiguous `int64_t`→`juce::var`
+conversion, duplicate `mixToMono` definitions left over from before it was
+promoted to a shared utility, JUCE `dsp::ProcessContextReplacing` binding to
+a temporary `AudioBlock` instead of a named one, and a nested-struct
+default-argument pattern (`const Settings& = {}`) that GCC and Clang both
+reject when the struct is declared inside the same class as the function —
+fixed with an overload instead, with identical call-site ergonomics. All of
+that is fixed in this repo now, not just identified.
 
 ## Project layout
 

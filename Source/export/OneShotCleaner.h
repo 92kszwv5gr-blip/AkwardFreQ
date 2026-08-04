@@ -30,6 +30,17 @@ namespace afq
 
         static juce::AudioBuffer<float> clean (const juce::AudioBuffer<float>& source,
                                                  int64_t startSample, int64_t endSample,
-                                                 double sampleRate, const Settings& settings = {});
+                                                 double sampleRate, const Settings& settings);
+
+        // A default argument here (`= {}`) would try to use Settings' default
+        // member initializers before they're "complete" (they only become
+        // usable once OneShotCleaner itself finishes being defined) — GCC and
+        // Clang both reject that. An overload sidesteps it with identical
+        // call-site ergonomics.
+        static juce::AudioBuffer<float> clean (const juce::AudioBuffer<float>& source,
+                                                 int64_t startSample, int64_t endSample, double sampleRate)
+        {
+            return clean (source, startSample, endSample, sampleRate, Settings{});
+        }
     };
 }

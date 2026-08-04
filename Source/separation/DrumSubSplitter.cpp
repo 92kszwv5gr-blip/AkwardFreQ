@@ -8,16 +8,6 @@ namespace afq
 {
     namespace
     {
-        juce::AudioBuffer<float> mixToMono (const juce::AudioBuffer<float>& buffer)
-        {
-            juce::AudioBuffer<float> mono (1, buffer.getNumSamples());
-            mono.clear();
-            const float scale = 1.0f / (float) juce::jmax (1, buffer.getNumChannels());
-            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-                mono.addFrom (0, 0, buffer, ch, 0, buffer.getNumSamples(), scale);
-            return mono;
-        }
-
         constexpr int kMaxSegmentSamplesAt44k = 44100; // 1s cap on any single onset segment
     }
 

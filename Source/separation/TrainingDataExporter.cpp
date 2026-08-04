@@ -19,8 +19,13 @@ namespace afq
             auto* obj = new juce::DynamicObject();
             obj->setProperty ("label", layerName (region.type));
             obj->setProperty ("labelIndex", (int) region.type);
-            obj->setProperty ("startSample", (int64_t) region.startSample);
-            obj->setProperty ("endSample", (int64_t) region.endSample);
+            // juce::int64 is explicitly `long long`, but int64_t is platform-
+            // dependent (`long` on 64-bit Linux) — casting to int64_t left the
+            // juce::var constructor call ambiguous between its int64/int/double
+            // overloads on LP64 platforms. juce::int64 matches var's actual
+            // constructor exactly.
+            obj->setProperty ("startSample", (juce::int64) region.startSample);
+            obj->setProperty ("endSample", (juce::int64) region.endSample);
             obj->setProperty ("confidence", region.confidence);
             obj->setProperty ("userCorrected", region.userCorrected);
 

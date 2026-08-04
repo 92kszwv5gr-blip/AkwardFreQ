@@ -109,7 +109,7 @@ namespace afq
             auto* obj = new juce::DynamicObject();
             obj->setProperty ("file", layerName (region.type) + "/" + fileName);
             obj->setProperty ("layer", layerName (region.type));
-            obj->setProperty ("startSample", (int64_t) region.startSample);
+            obj->setProperty ("startSample", (juce::int64) region.startSample); // see TrainingDataExporter.cpp for why int64_t is ambiguous here
             obj->setProperty ("lengthMs", (double) region.lengthSamples() / result.sampleRate * 1000.0);
             obj->setProperty ("confidence", region.confidence);
             obj->setProperty ("userCorrected", region.userCorrected);

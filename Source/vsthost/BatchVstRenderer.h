@@ -28,6 +28,17 @@ namespace afq
         // sample rate/block size/channel count before processing — safe to
         // call repeatedly on the same chain across multiple export jobs.
         static juce::AudioBuffer<float> render (const juce::AudioBuffer<float>& source, double sampleRate,
-                                                  PluginChain& chain, const Settings& settings = {});
+                                                  PluginChain& chain, const Settings& settings);
+
+        // A default argument here (`= {}`) would try to use Settings' default
+        // member initializers before they're "complete" (they only become
+        // usable once BatchVstRenderer itself finishes being defined) — GCC
+        // and Clang both reject that. An overload sidesteps it with identical
+        // call-site ergonomics.
+        static juce::AudioBuffer<float> render (const juce::AudioBuffer<float>& source, double sampleRate,
+                                                  PluginChain& chain)
+        {
+            return render (source, sampleRate, chain, Settings{});
+        }
     };
 }
