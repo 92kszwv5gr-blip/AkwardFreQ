@@ -2,6 +2,12 @@
 # using mingw-w64. Not part of the normal build (see README) — this exists
 # specifically to attempt a real Windows binary from a Linux-only CI/dev
 # container, without a Windows machine or Visual Studio available.
+#
+# One-time environment fix needed before building (see README's "Tried it"
+# section for why): mingw-w64 only ships lowercase windows.h, but part of
+# the VST3 SDK includes <Windows.h>, which fails to resolve on a
+# case-sensitive filesystem.
+#   ln -s windows.h /usr/x86_64-w64-mingw32/include/Windows.h
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)
 

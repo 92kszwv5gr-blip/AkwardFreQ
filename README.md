@@ -7,6 +7,59 @@ chain, and exports the isolated layers as a tagged sample pack — with an
 in-plugin correction UI so misclassified layers can be fixed and fed back
 into retraining.
 
+## Features
+
+- **AI stem separation** — real HT-Demucs (ONNX Runtime, CPU inference) splits
+  a track into `drums` / `bass` / `other`, then DSP heuristics sub-divide
+  those into 11 psytrance-specific layers: Kick, HiHat, Percussion,
+  Breakbeat, Bass, SynthLead, Stabs, Atmosphere, FX, Zap, Glitch.
+- **In-plugin correction + retraining loop** — reassign any misclassified
+  region in the Split tab; corrections export as labeled training data, and
+  `tools/retrain_layer_classifier.py` trains a small classifier on them
+  offline that the plugin picks up automatically.
+- **Genre-aware bias presets** (e.g. Psy-Trance) that nudge classification
+  scoring toward what's actually common in that style.
+- **Real mastering chain** — multiband compression, reference-track EQ
+  matching, loudness trim, and limiting; not a preset dressed up as
+  "mastering."
+- **VST3 plugin hosting**, in two places: a real-time insert chain on the
+  Master tab (ahead of AkwardFreQ's own mastering stages), and a separate
+  offline batch-render chain that processes files *as they're exported* —
+  something Ableton's own device chain can't do since it never touches files
+  after export.
+- **Drum chopping** — onset-detected or mechanical equal-N slicing of any
+  stem (or the whole unsplit drums bus), with a live waveform + slice-marker
+  preview, ready to drag into a Drum Rack or export as a named/prefixed
+  sample folder.
+- **One-shot instrument export** — SFZ (open format) and/or a best-effort
+  Ableton Simpler `.adv` patch, auto-trimmed/normalized/faded from any
+  selected region.
+- **Audio-to-MIDI transcription** — monophonic pitch-tracking on a
+  waveform-selected range, with loop-point snapping and loop preview before
+  committing.
+- **Tagged sample pack export** — local-only WAV metadata (RIFF INFO chunk:
+  title/artist/genre/comment, plus detected BPM/key) written into every
+  exported file. No network calls, ever.
+- **Per-tab and global presets** — every panel (splitter, mastering, each
+  VST chain, tag profile, export, instrument, drum chop) has its own
+  save/set-default/delete preset library, plus one Global Preset that snapshots
+  everything at once. Presets live on disk, independent of any single
+  Ableton project.
+- **JUCE Standalone build** alongside the VST3, so the whole plugin can be
+  run and clicked through without a DAW at all — see screenshots below.
+
+## Screenshots
+
+These are real screenshots from an actual compiled build, run headless
+(Xvfb) as a JUCE `Standalone` app — not mockups. See ["Tried it — does it
+actually work?"](#tried-it--does-it-actually-work) below for how this was
+validated.
+
+| | |
+|---|---|
+| ![Split tab](docs/screenshots/split-tab.png) Split tab, ready to import | ![Split tab after separation](docs/screenshots/split-tab-separated.png) Real HT-Demucs separation complete — detected regions with confidence % |
+| ![Master tab](docs/screenshots/master-tab.png) Mastering chain + VST insert hosting | ![Drum Chop tab](docs/screenshots/drum-chop-tab.png) Drum Chop — onset-detected slices with live waveform preview |
+
 ## What this actually is (read before building)
 
 No pretrained model anywhere splits audio into 11 psytrance-specific layers —
@@ -301,6 +354,41 @@ default-argument pattern (`const Settings& = {}`) that GCC and Clang both
 reject when the struct is declared inside the same class as the function —
 fixed with an overload instead, with identical call-site ergonomics. All of
 that is fixed in this repo now, not just identified.
+
+A real Windows `.vst3` and `.exe` (the actual VST3 target, and its
+Standalone counterpart) have also been produced directly from this Linux
+container, by cross-compiling with mingw-w64 (`toolchain-mingw64.cmake`) —
+confirmed as genuine `PE32+` Windows binaries (`file` reports
+`PE32+ executable (DLL)` / `PE32+ executable (GUI)`), not just a clean
+configure. Getting there required two real fixes, both scoped to mingw only
+so a normal MSVC build is untouched:
+
+- ONNX Runtime's C API headers assume MSVC: `ORT_API_CALL` expands to the
+  single-underscore `_stdcall` (mingw only recognizes `__stdcall`), and they
+  pull in SAL annotation macros (`_Frees_ptr_opt_` etc.) that mingw-w64's own
+  `sal.h` doesn't fully define. Both are shimmed in
+  `Source/separation/OnnxMingwShim.h`, included before the ONNX Runtime
+  headers in `DemucsEngine.cpp`/`LayerClassifier.cpp`.
+- JUCE's VST3 manifest helper (`juce_vst3_helper`) is itself cross-compiled
+  to a Windows `.exe`, which can't execute on the Linux host to generate the
+  optional `moduleinfo.json` scan-acceleration manifest during the build —
+  that step fails, but the actual plugin binary links and completes
+  regardless; `moduleinfo.json` is a VST3 SDK 3.7+ convenience for faster
+  host scanning, not required for a host to load the module. Running the
+  build under Wine, or on a real Windows/MSVC toolchain, would generate it.
+
+A third, environment-level issue (not fixable from repo code) shows up on
+Linux specifically because its filesystem is case-sensitive: part of the
+VST3 SDK includes `<Windows.h>` (capital W), but mingw-w64 only ships
+`windows.h` (lowercase), so it fails to find it. Fixed for this container by
+adding a same-directory symlink —
+`ln -s windows.h /usr/x86_64-w64-mingw32/include/Windows.h` — before
+building; anyone reproducing this cross-build path on their own Linux box
+will need the same one-time symlink.
+
+This cross-build path is a convenience for CI/dev containers without a
+Windows machine — `Visual Studio + the steps above` remains the reliable,
+fully-supported way to produce a release build.
 
 ## Project layout
 
