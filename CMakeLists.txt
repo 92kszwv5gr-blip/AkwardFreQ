@@ -84,6 +84,7 @@ target_sources(AkwardFreQ PRIVATE
 
     Source/export/SamplePackExporter.cpp
     Source/export/WavFileWriter.cpp
+    Source/export/OneShotCleaner.cpp
     Source/export/SfzExporter.cpp
     Source/export/AbletonPresetWriter.cpp
     Source/export/DrumRackExporter.cpp

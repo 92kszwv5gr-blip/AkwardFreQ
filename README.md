@@ -45,7 +45,12 @@ between the C++ classifier and the Python retraining script.
   its SFZ importer, Decent Sampler, sforzando, etc.) and/or an Ableton
   Simpler preset (`.adv`). Native Instruments' own `.nki` format is encrypted
   and undocumented — there's no legitimate way to write one, which is why SFZ
-  is the primary format here rather than a Kontakt-native file.
+  is the primary format here rather than a Kontakt-native file. Before either
+  format is written, `OneShotCleaner` trims dead air from the edges (keeping
+  a small pre-roll before the detected onset so the attack stays intact),
+  normalizes peak level, and applies short fades so the file has no
+  boundary clicks regardless of how precisely the region was drawn — this is
+  the "cleaned up" one-shot, not any kind of resynthesis.
 - **Drum Chop tab**: chops a drum layer (or the whole unsplit `drums` bus)
   into hits via onset detection and exports them as named, prefixed `.wav`
   files, ready to drag into an Ableton Drum Rack yourself. There's no

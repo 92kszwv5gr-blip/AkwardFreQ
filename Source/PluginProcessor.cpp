@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "export/SamplePackExporter.h"
 #include "export/WavFileWriter.h"
+#include "export/OneShotCleaner.h"
 #include "separation/TrainingDataExporter.h"
 #include <thread>
 
@@ -242,6 +243,14 @@ namespace afq
         std::thread worker ([this, result, request, sampleRate]() mutable
         {
             const auto& src = result->layerBuffers[(size_t) request.sourceLayer];
+
+            // Clean up once (trim dead air, normalize, fade edges) and reuse
+            // the same cleaned audio for whichever output format(s) were
+            // requested, rather than re-slicing the raw region per format.
+            const auto cleaned = OneShotCleaner::clean (src, request.startSample, request.endSample, sampleRate);
+            const int64_t cleanedStart = 0;
+            const int64_t cleanedEnd = cleaned.getNumSamples();
+
             juce::String error;
             bool ok = true;
 
@@ -251,14 +260,14 @@ namespace afq
                 settings.rootKeyOverride = request.rootKeyOverride;
                 settings.lowKey = request.lowKey;
                 settings.highKey = request.highKey;
-                ok = SfzExporter::exportOneShot (src, request.startSample, request.endSample, sampleRate, settings, error);
+                ok = SfzExporter::exportOneShot (cleaned, cleanedStart, cleanedEnd, sampleRate, settings, error);
             }
 
             if (ok && request.writeAbletonSimpler)
             {
                 // Simpler patching needs the sample as its own file on disk to
                 // reference — reuse the SFZ export's wav if we just wrote one,
-                // otherwise write a temp wav specifically for this.
+                // otherwise write a dedicated wav specifically for this.
                 juce::File wavFile;
                 if (request.writeSfz)
                 {
@@ -270,7 +279,7 @@ namespace afq
                 else
                 {
                     wavFile = request.abletonOutputFile.getSiblingFile (request.abletonOutputFile.getFileNameWithoutExtension() + ".wav");
-                    ok = writeWavSlice (src, request.startSample, request.endSample, sampleRate, wavFile, error);
+                    ok = writeWavSlice (cleaned, cleanedStart, cleanedEnd, sampleRate, wavFile, error);
                 }
 
                 if (ok)
