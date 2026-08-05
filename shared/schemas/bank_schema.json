@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kntkta.io/schemas/bank/1.0",
+  "title": "KNTKTA Bank Schema v1.0",
+  "description": "A collection of KPS presets forming a sound bank",
+  "type": "object",
+  "required": ["kps_version", "bank_id", "name", "presets"],
+  "properties": {
+    "kps_version": { "type": "string" },
+    "bank_id": { "type": "string", "description": "UUID v4" },
+    "name": { "type": "string" },
+    "author": { "type": "string" },
+    "description": { "type": "string" },
+    "plugin": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "format": { "type": "string" }
+      }
+    },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "presets": {
+      "type": "array",
+      "description": "Array of KPS preset objects or preset_id references",
+      "items": {
+        "oneOf": [
+          { "type": "string", "description": "preset_id reference" },
+          { "$ref": "kps_schema.json" }
+        ]
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "modified_at": { "type": "string", "format": "date-time" }
+  }
+}
