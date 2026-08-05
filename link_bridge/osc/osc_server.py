@@ -80,11 +80,20 @@ class OscServer:
         """Register a handler for an OSC address pattern."""
         self._handlers[address_pattern] = fn
 
-    def start(self):
-        """Start the OSC server in a background thread."""
+    def start(self, bind_host: str = "127.0.0.1"):
+        """
+        Start the OSC server in a background thread.
+
+        bind_host: Interface to bind on.
+          - "127.0.0.1" (default) — localhost only; safe for single-machine use.
+          - Set to a specific LAN IP (e.g. "192.168.1.10") to accept packets from
+            iOS/Link devices on the local network only.
+          - Avoid binding to "0.0.0.0" unless operating in a trusted LAN environment
+            with no exposure to untrusted networks.
+        """
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._socket.bind(("0.0.0.0", self.port))
+        self._socket.bind((bind_host, self.port))
         self._socket.settimeout(1.0)
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True)
