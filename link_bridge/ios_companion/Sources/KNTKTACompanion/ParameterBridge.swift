@@ -80,17 +80,20 @@ class ParameterBridge: ObservableObject {
     }
 
     private func handleIncomingConnection(_ conn: NWConnection) {
-        func receiveLoop() {
-            conn.receiveMessage { [weak self] data, _, _, _ in
-                guard let self = self else { return }
-                if let data = data {
-                    self.parseOscMessage(data: data)
-                }
-                receiveLoop()
+        conn.start(queue: listenerQueue)
+        receiveMessage(on: conn)
+    }
+
+    private func receiveMessage(on conn: NWConnection) {
+        conn.receiveMessage { [weak self] data, _, isComplete, error in
+            guard let self = self else { return }
+            if let data = data {
+                self.parseOscMessage(data: data)
+            }
+            if !isComplete && error == nil {
+                self.receiveMessage(on: conn)
             }
         }
-        receiveLoop()
-        conn.start(queue: listenerQueue)
     }
 
     private func parseOscMessage(data: Data) {

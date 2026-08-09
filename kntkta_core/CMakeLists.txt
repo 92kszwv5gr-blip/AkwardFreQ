@@ -24,6 +24,18 @@ else()
 endif()
 
 # ------------------------------------------------------------------ #
+# SQLite (bundled amalgamation)
+# ------------------------------------------------------------------ #
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/database/sqlite3.c")
+    add_library(sqlite3 STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/database/sqlite3.c
+    )
+else()
+    add_library(sqlite3 INTERFACE)
+endif()
+target_include_directories(sqlite3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/database)
+
+# ------------------------------------------------------------------ #
 # KNTKTA Plugin / App
 # ------------------------------------------------------------------ #
 juce_add_plugin(KNTKTA
@@ -51,6 +63,7 @@ target_sources(KNTKTA PRIVATE
 target_include_directories(KNTKTA PRIVATE
     Source
     Source/Core
+    Source/GUI
 )
 
 # ------------------------------------------------------------------ #
@@ -74,6 +87,7 @@ target_link_libraries(KNTKTA PRIVATE
     juce::juce_graphics
     juce::juce_gui_basics
     juce::juce_gui_extra
+    sqlite3
 )
 
 # ------------------------------------------------------------------ #
