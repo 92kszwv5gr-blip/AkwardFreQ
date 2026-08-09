@@ -2,7 +2,6 @@
   KntktaProcessor.cpp — KNTKTA JUCE AudioProcessor implementation
 */
 #include "KntktaProcessor.h"
-#include "../GUI/MainComponent.h"
 
 KntktaProcessor::KntktaProcessor()
     : AudioProcessor (BusesProperties()

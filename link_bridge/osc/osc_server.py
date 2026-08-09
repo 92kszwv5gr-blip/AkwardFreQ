@@ -9,7 +9,6 @@ OSC address patterns:
   /kntkta/ping              - Keep-alive
   /kntkta/link/tempo        - Tempo sync
 """
-import asyncio
 import struct
 import socket
 import threading

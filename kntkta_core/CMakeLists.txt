@@ -24,14 +24,6 @@ else()
 endif()
 
 # ------------------------------------------------------------------ #
-# SQLite (bundled amalgamation)
-# ------------------------------------------------------------------ #
-add_library(sqlite3 STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/database/sqlite3.c
-)
-target_include_directories(sqlite3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/database)
-
-# ------------------------------------------------------------------ #
 # KNTKTA Plugin / App
 # ------------------------------------------------------------------ #
 juce_add_plugin(KNTKTA
@@ -54,21 +46,11 @@ juce_add_plugin(KNTKTA
 # ------------------------------------------------------------------ #
 target_sources(KNTKTA PRIVATE
     Source/Core/KntktaProcessor.cpp
-    Source/Core/PresetManager.cpp
-    Source/Core/LinkBridge.cpp
-    Source/Core/AiClient.cpp
-    Source/Core/Database.cpp
-    Source/GUI/MainComponent.cpp
-    Source/GUI/LayoutEditor.cpp
-    Source/GUI/BankManager.cpp
-    Source/GUI/SampleForgePanel.cpp
-    Source/GUI/LinkPanel.cpp
 )
 
 target_include_directories(KNTKTA PRIVATE
     Source
     Source/Core
-    Source/GUI
 )
 
 # ------------------------------------------------------------------ #
@@ -92,7 +74,6 @@ target_link_libraries(KNTKTA PRIVATE
     juce::juce_graphics
     juce::juce_gui_basics
     juce::juce_gui_extra
-    sqlite3
 )
 
 # ------------------------------------------------------------------ #
