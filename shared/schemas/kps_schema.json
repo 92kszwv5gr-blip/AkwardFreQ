@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kntkta.io/schemas/kps/1.0",
+  "title": "KNTKTA Preset Schema (KPS) v1.0",
+  "description": "Universal preset format for KNTKTA — format-agnostic, Push 1-aware",
+  "type": "object",
+  "required": ["kps_version", "preset_id", "name", "plugin", "parameters"],
+  "properties": {
+    "kps_version": {
+      "type": "string",
+      "description": "Schema version",
+      "example": "1.0"
+    },
+    "preset_id": {
+      "type": "string",
+      "description": "UUID v4 unique identifier for this preset"
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "Human-readable preset name"
+    },
+    "display_name": {
+      "type": "string",
+      "maxLength": 16,
+      "description": "Short name for Push 1 LCD display"
+    },
+    "plugin": {
+      "type": "object",
+      "required": ["name", "format"],
+      "properties": {
+        "name": { "type": "string" },
+        "manufacturer": { "type": "string" },
+        "format": {
+          "type": "string",
+          "enum": ["vst2", "vst3", "au", "clap", "ableton_device", "m4l", "standalone", "unknown"]
+        },
+        "uid": { "type": "string", "description": "Plugin UID / unique ID string" },
+        "version": { "type": "string" }
+      }
+    },
+    "source_format": {
+      "type": "string",
+      "description": "Original format this preset was imported from",
+      "enum": [".fxb", ".fxp", ".nki", ".adv", ".adg", ".vstpreset", ".aupreset",
+               ".pchk", ".pst", ".xpf", ".mid", ".kps", "unknown"]
+    },
+    "category": {
+      "type": "string",
+      "description": "Sound category",
+      "enum": ["bass", "lead", "pad", "pluck", "keys", "drum", "percussion",
+               "fx", "arp", "chord", "texture", "vocal", "other"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "parameters": {
+      "type": "array",
+      "description": "All plugin parameters with values and Push 1 mapping metadata",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "value"],
+        "properties": {
+          "id": { "type": "integer", "description": "Plugin parameter index" },
+          "name": { "type": "string", "description": "Original plugin parameter name" },
+          "display_name": {
+            "type": "string",
+            "maxLength": 8,
+            "description": "8-char truncated name for Push 1 LCD"
+          },
+          "value": { "type": "number", "minimum": 0.0, "maximum": 1.0,
+                     "description": "Normalised parameter value (0.0–1.0)" },
+          "value_display": { "type": "string", "description": "Human-readable value string" },
+          "min": { "type": "number" },
+          "max": { "type": "number" },
+          "unit": { "type": "string" },
+          "automatable": { "type": "boolean" }
+        }
+      }
+    },
+    "push1_layout": {
+      "type": "object",
+      "description": "Push 1 encoder page layout for this preset",
+      "properties": {
+        "banks": {
+          "type": "array",
+          "maxItems": 64,
+          "description": "Up to 64 parameter banks (8 encoders per bank)",
+          "items": {
+            "type": "object",
+            "required": ["bank_index", "name", "encoders"],
+            "properties": {
+              "bank_index": { "type": "integer", "minimum": 0, "maximum": 63 },
+              "name": { "type": "string", "maxLength": 8 },
+              "encoders": {
+                "type": "array",
+                "maxItems": 8,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "encoder_index": { "type": "integer", "minimum": 0, "maximum": 7 },
+                    "parameter_id": { "type": "integer" },
+                    "display_name": { "type": "string", "maxLength": 8 },
+                    "macro_id": { "type": "string", "description": "Optional macro group ID" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "macros": {
+      "type": "array",
+      "description": "One-to-many macro definitions",
+      "items": {
+        "type": "object",
+        "required": ["macro_id", "name", "targets"],
+        "properties": {
+          "macro_id": { "type": "string" },
+          "name": { "type": "string" },
+          "targets": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "properties": {
+                "parameter_id": { "type": "integer" },
+                "device_path": { "type": "string" },
+                "curve": { "type": "string", "enum": ["linear", "exponential", "step", "inverted"] },
+                "range_min": { "type": "number" },
+                "range_max": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "snapshots": {
+      "type": "array",
+      "description": "Saved parameter state snapshots (for morph/interpolation)",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "properties": {
+          "snapshot_id": { "type": "integer" },
+          "name": { "type": "string" },
+          "values": {
+            "type": "object",
+            "description": "Map of parameter_id → normalised value"
+          }
+        }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "modified_at": { "type": "string", "format": "date-time" },
+    "author": { "type": "string" },
+    "bank_name": { "type": "string" },
+    "bank_id": { "type": "string" }
+  }
+}
