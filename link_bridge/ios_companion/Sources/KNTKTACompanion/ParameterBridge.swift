@@ -3,6 +3,7 @@
 import Foundation
 import Network
 import Combine
+import UIKit
 
 /// Represents one parameter exposed to KNTKTA
 struct AppParameter: Identifiable {
@@ -79,11 +80,20 @@ class ParameterBridge: ObservableObject {
     }
 
     private func handleIncomingConnection(_ conn: NWConnection) {
-        conn.receiveMessage { [weak self] data, _, _, _ in
-            guard let data = data, let self = self else { return }
-            self.parseOscMessage(data: data)
-        }
         conn.start(queue: listenerQueue)
+        receiveMessage(on: conn)
+    }
+
+    private func receiveMessage(on conn: NWConnection) {
+        conn.receiveMessage { [weak self] data, _, isComplete, error in
+            guard let self = self else { return }
+            if let data = data {
+                self.parseOscMessage(data: data)
+            }
+            if !isComplete && error == nil {
+                self.receiveMessage(on: conn)
+            }
+        }
     }
 
     private func parseOscMessage(data: Data) {
@@ -145,7 +155,7 @@ class ParameterBridge: ObservableObject {
     private func encodeOscString(_ s: String) -> [UInt8] {
         var bytes = Array(s.utf8) + [0]
         let pad = (4 - bytes.count % 4) % 4
-        bytes.append(contentsOf: [UInt8](repeating: 0, count: pad == 0 ? 4 : pad))
+        bytes.append(contentsOf: [UInt8](repeating: 0, count: pad))
         return bytes
     }
 }

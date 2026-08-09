@@ -26,9 +26,13 @@ endif()
 # ------------------------------------------------------------------ #
 # SQLite (bundled amalgamation)
 # ------------------------------------------------------------------ #
-add_library(sqlite3 STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/database/sqlite3.c
-)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/database/sqlite3.c")
+    add_library(sqlite3 STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/database/sqlite3.c
+    )
+else()
+    add_library(sqlite3 INTERFACE)
+endif()
 target_include_directories(sqlite3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/database)
 
 # ------------------------------------------------------------------ #
@@ -54,15 +58,6 @@ juce_add_plugin(KNTKTA
 # ------------------------------------------------------------------ #
 target_sources(KNTKTA PRIVATE
     Source/Core/KntktaProcessor.cpp
-    Source/Core/PresetManager.cpp
-    Source/Core/LinkBridge.cpp
-    Source/Core/AiClient.cpp
-    Source/Core/Database.cpp
-    Source/GUI/MainComponent.cpp
-    Source/GUI/LayoutEditor.cpp
-    Source/GUI/BankManager.cpp
-    Source/GUI/SampleForgePanel.cpp
-    Source/GUI/LinkPanel.cpp
 )
 
 target_include_directories(KNTKTA PRIVATE

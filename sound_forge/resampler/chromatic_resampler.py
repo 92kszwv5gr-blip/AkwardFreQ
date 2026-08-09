@@ -124,10 +124,10 @@ class ChromaticResampler:
         """
         try:
             import sounddevice as sd
-            import numpy as np
 
             total_duration = pre_roll_s + duration_s
             total_frames = int(total_duration * self.sample_rate)
+            pre_roll_frames = int(pre_roll_s * self.sample_rate)
 
             # Start recording
             recording = sd.rec(
@@ -147,11 +147,11 @@ class ChromaticResampler:
 
             # Wait for recording to finish
             sd.wait()
-            return recording.tobytes()
+            return recording[pre_roll_frames:].tobytes()
 
         except ImportError:
             # sounddevice not available — return silence placeholder
-            num_samples = int((pre_roll_s + duration_s) * self.sample_rate * self.channels)
+            num_samples = int(duration_s * self.sample_rate * self.channels)
             return bytes(num_samples * 2)  # 16-bit zeros
 
     def _write_wav(self, filepath: str, audio_data: bytes) -> int:

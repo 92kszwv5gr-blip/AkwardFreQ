@@ -2,7 +2,6 @@
   KntktaProcessor.cpp — KNTKTA JUCE AudioProcessor implementation
 */
 #include "KntktaProcessor.h"
-#include "../GUI/MainComponent.h"
 
 KntktaProcessor::KntktaProcessor()
     : AudioProcessor (BusesProperties()
@@ -38,15 +37,22 @@ juce::AudioProcessorEditor* KntktaProcessor::createEditor()
 void KntktaProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
-    // Append current preset JSON
-    juce::MemoryOutputStream stream (destData, true);
-    stream.writeString (currentPresetJson);
+    state.setProperty ("currentPresetJson", currentPresetJson, nullptr);
+    if (auto xml = state.createXml())
+        copyXmlToBinary (*xml, destData);
 }
 
 void KntktaProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    juce::MemoryInputStream stream (data, static_cast<size_t> (sizeInBytes), false);
-    currentPresetJson = stream.readEntireStreamAsString();
+    if (auto xmlState = getXmlFromBinary (data, sizeInBytes))
+    {
+        auto state = juce::ValueTree::fromXml (*xmlState);
+        if (state.isValid())
+        {
+            apvts.replaceState (state);
+            currentPresetJson = state.getProperty ("currentPresetJson").toString();
+        }
+    }
 }
 
 void KntktaProcessor::setTempo (double bpm)
