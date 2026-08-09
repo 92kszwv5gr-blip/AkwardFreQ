@@ -1,0 +1,28 @@
+# Build output
+build/
+build-win/
+out/
+cmake-build-*/
+
+# JUCE fetch cache (re-downloaded by CMake FetchContent)
+_deps/
+
+# Model weights — large binaries, produced by tools/export_demucs_onnx.py,
+# not checked into git. See Models/README.md.
+Models/*.onnx
+Models/UserTrained/*.onnx
+
+# Per-user training/correction data — not shared, stays local.
+TrainingData/
+
+# Python
+tools/__pycache__/
+tools/*.pyc
+tools/.venv/
+tools/venv/
+
+# IDE
+.vs/
+.vscode/
+*.user
+.DS_Store
