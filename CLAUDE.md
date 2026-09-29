@@ -27,8 +27,24 @@ ONNX Runtime. Developed by PsykoDogoa. `README.md` describes the product; this f
 
 ### Tests
 
-There are no automated tests yet (planned next). When adding them, write the failing test first and watch it fail.
-Good first targets: `Source/separation/DrumSlicer`, `EqualSlicer`, `midi/LoopSnapper`, `midi/AudioToMidiConverter`.
+Automated tests live in `tests/` (JUCE `UnitTest`, one console runner, `AkwardFreQTests`). They cover the slicers,
+loop snapping, audio-to-MIDI, the one-shot cleaner and the mastering chain, and need no model or audio device:
+
+    cmake -B build-test -DAFQ_BUILD_TESTS=ON -DONNXRUNTIME_ROOT_DIR=/tmp/onnxruntime-linux/onnxruntime-linux-x64-1.20.1 \
+          -DCMAKE_BUILD_TYPE=Debug -DCOPY_PLUGIN_AFTER_BUILD=OFF
+    cmake --build build-test --target AkwardFreQTests -j4 > /tmp/build-test.log 2>&1; tail -2 /tmp/build-test.log; grep -c "error:" /tmp/build-test.log
+    ctest --test-dir build-test --output-on-failure        # or run the binary directly; optional argument filters by name
+
+- The runner exits 1 on any failure and 2 if no tests matched or no checks ran. Read the last line ("N test groups: X checks
+  passed, Y failed"), not just the exit code.
+- Write the failing test first and watch it fail. To prove a test can fail, revert the fix, rebuild and rerun.
+- `KNOWN ISSUE` lines are real defects recorded with `knownIssue()` (in `tests/TestUtils.h`). They count as nothing while the
+  behaviour is wrong and the test fails when it starts holding, so fixing the code forces you to promote the check to a real one.
+  Current ones: onset detector over-triggers on noisy material, DrumSlicer therefore over-slices, transcription of a 3-note melody
+  gives 14 notes, the limiter is not a true ceiling (peaks reach 0 dBFS), the loudness meter reads stereo about 3 dB low.
+- `tests/reference/*.txt` pin the current mastering output (0.1 dB tolerance). They record behaviour, not correctness.
+  After an intended change: `AFQ_UPDATE_REFERENCE=1 ./AkwardFreQTests Mastering`, review the diff, commit it.
+- `build-test/` is git-ignored. Not covered yet: the separation engine, the UI, the plugin processor.
 
 ## Set up a session
 

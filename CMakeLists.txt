@@ -161,3 +161,12 @@ if (WIN32)
         COMMENT "Copying onnxruntime.dll next to AkwardFreQ.vst3"
     )
 endif()
+
+#-------------------------------------------------------------------------------
+# Automated tests (off by default). See tests/CMakeLists.txt and CLAUDE.md.
+#-------------------------------------------------------------------------------
+option(AFQ_BUILD_TESTS "Build the AkwardFreQTests runner" OFF)
+if (AFQ_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
