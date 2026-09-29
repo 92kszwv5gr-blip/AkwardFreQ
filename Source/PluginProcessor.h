@@ -182,6 +182,13 @@ namespace afq
         SeparationEngine separationEngine_;
         MasteringChain masteringChain_;
 
+        // The Master tab's parameters, read on the audio thread (raw atomics owned by apvts).
+        std::atomic<float>* masterBypassParam_ = nullptr;
+        std::atomic<float>* masterTargetLoudnessParam_ = nullptr;
+        std::atomic<float>* masterCompAmountParam_ = nullptr;
+        std::atomic<float>* masterLimiterCeilingParam_ = nullptr;
+        std::atomic<float>* masterEqMatchAmountParam_ = nullptr;
+
         juce::AudioFormatManager formatManager_;
 
         // Capture state (audio thread writes, message thread reads after stop).

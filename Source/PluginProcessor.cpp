@@ -16,6 +16,11 @@ namespace afq
                                      .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
           apvts (*this, nullptr, "PARAMS", params::createParameterLayout())
     {
+        masterBypassParam_ = apvts.getRawParameterValue (params::masterBypassId);
+        masterTargetLoudnessParam_ = apvts.getRawParameterValue (params::masterTargetLoudnessId);
+        masterCompAmountParam_ = apvts.getRawParameterValue (params::masterCompAmountId);
+        masterLimiterCeilingParam_ = apvts.getRawParameterValue (params::masterLimiterCeilingId);
+        masterEqMatchAmountParam_ = apvts.getRawParameterValue (params::masterEqMatchAmountId);
         formatManager_.registerBasicFormats(); // WAV/AIFF/FLAC/OGG — no MP3 decoder ships with JUCE, see README
         pluginScanner_.loadCache(); // picks up a previous session's scan results, if any — no rescan needed
     }
@@ -526,6 +531,14 @@ namespace afq
         // SpinLock to grab the current chain snapshot).
         masteringVstChain_.processAudioThread (buffer);
 
+        // The Master tab's controls. (Until these were read here the chain always ran with its defaults, bypassed.)
+        MasteringChain::Settings mastering;
+        mastering.bypass = masterBypassParam_->load() >= 0.5f;
+        mastering.targetLoudnessLufs = masterTargetLoudnessParam_->load();
+        mastering.compAmount = masterCompAmountParam_->load();
+        mastering.limiterCeilingDb = masterLimiterCeilingParam_->load();
+        mastering.eqMatchAmount = masterEqMatchAmountParam_->load();
+        masteringChain_.setSettings (mastering);
         masteringChain_.processBlock (buffer);
     }
 

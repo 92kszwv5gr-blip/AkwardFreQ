@@ -85,6 +85,7 @@ target_sources(AkwardFreQ PRIVATE
 
     Source/mastering/LoudnessMeter.cpp
     Source/mastering/LookaheadLimiter.cpp
+    Source/mastering/LoudnessTrim.cpp
     Source/mastering/MasteringChain.cpp
 
     Source/export/SamplePackExporter.cpp

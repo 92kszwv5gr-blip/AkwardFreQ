@@ -13,8 +13,12 @@ target_sources(AkwardFreQTests PRIVATE
     AudioToMidiTests.cpp
     OneShotCleanerTests.cpp
     MasteringTests.cpp
-        LoudnessMeterTests.cpp
-        LookaheadLimiterTests.cpp
+    LoudnessMeterTests.cpp
+    LookaheadLimiterTests.cpp
+    LoudnessTrimTests.cpp
+    RealtimeSafetyTests.cpp
+    AllocationCounter.cpp
+    AllocationCounter.h
 
     # The code under test, compiled straight into the runner (no plugin, no ONNX Runtime needed).
     ../Source/separation/AnalysisUtils.cpp
@@ -25,6 +29,7 @@ target_sources(AkwardFreQTests PRIVATE
     ../Source/export/OneShotCleaner.cpp
     ../Source/mastering/LoudnessMeter.cpp
     ../Source/mastering/LookaheadLimiter.cpp
+    ../Source/mastering/LoudnessTrim.cpp
     ../Source/mastering/MasteringChain.cpp
 )
 
@@ -47,5 +52,11 @@ target_link_libraries(AkwardFreQTests
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
 )
+
+# Count malloc as well as operator new where GNU ld can wrap it (see AllocationCounter.h).
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(AkwardFreQTests PRIVATE AFQ_WRAP_MALLOC=1)
+    target_link_options(AkwardFreQTests PRIVATE -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc)
+endif()
 
 add_test(NAME AkwardFreQTests COMMAND AkwardFreQTests)

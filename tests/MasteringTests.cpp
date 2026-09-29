@@ -1,6 +1,7 @@
 #include <juce_core/juce_core.h>
 #include "TestUtils.h"
 #include "mastering/LookaheadLimiter.h"
+#include "mastering/LoudnessMeter.h"
 #include "mastering/MasteringChain.h"
 
 namespace afq
@@ -130,6 +131,113 @@ namespace afq
                         expectLessOrEqual (peak, juce::Decibels::decibelsToGain (ceilingDb),
                                            "peak " + juce::String (toDb (peak), 2) + " dBFS with ceiling " + juce::String (ceilingDb) + " dB, comp " + juce::String (comp));
                     }
+            }
+
+            beginTest ("the chain brings a steady signal to the target loudness");
+            {
+                auto tone = silence (2, samplesFor (20.0));
+                addSine (tone, 0, tone.getNumSamples(), 1000.0, juce::Decibels::decibelsToGain (-30.0f));
+                MasteringChain chain;
+                chain.prepare (kSampleRate, 2, 512);
+                auto s = active (-1.0f, 0.0f, -14.0f);
+                chain.setSettings (s);
+                juce::AudioBuffer<float> out (2, tone.getNumSamples());
+                for (int pos = 0; pos + 512 <= tone.getNumSamples(); pos += 512)
+                {
+                    juce::AudioBuffer<float> block (2, 512);
+                    for (int ch = 0; ch < 2; ++ch) block.copyFrom (ch, 0, tone, ch, pos, 512);
+                    chain.processBlock (block);
+                    for (int ch = 0; ch < 2; ++ch) out.copyFrom (ch, pos, block, ch, 0, 512);
+                }
+                juce::AudioBuffer<float> tail (2, samplesFor (10.0));
+                for (int ch = 0; ch < 2; ++ch) tail.copyFrom (ch, 0, out, ch, samplesFor (8.0), tail.getNumSamples());
+                LoudnessMeter meter;
+                meter.prepare (kSampleRate, 2);
+                expectWithinAbsoluteError (meter.measureIntegratedLoudness (tail), -14.0f, 0.6f, "output loudness with the target at -14 LUFS");
+                expectWithinAbsoluteError (chain.getLastMeasuredLoudnessLufs(), -14.0f, 0.6f, "and the loudness the chain reports agrees");
+                expectGreaterThan (chain.getTrimGainDb(), 10.0f, "by a gain of about 16 dB");
+            }
+
+            beginTest ("a block larger than announced is handled");
+            {
+                const auto in = whiteNoise (2, 1000, 0.3f, 8u);
+                auto render1000 = [&] (bool oneBlock)
+                {
+                    MasteringChain chain;
+                    chain.prepare (kSampleRate, 2, 256);
+                    chain.setSettings (active());
+                    auto b = in;
+                    if (oneBlock) chain.processBlock (b);
+                    else
+                        for (int pos = 0; pos < 1000; pos += 256)
+                        {
+                            juce::AudioBuffer<float> piece (b.getArrayOfWritePointers(), 2, pos, std::min (256, 1000 - pos));
+                            chain.processBlock (piece);
+                        }
+                    return b;
+                };
+                const auto big = render1000 (true), chunked = render1000 (false);
+                bool identical = true;
+                for (int ch = 0; ch < 2 && identical; ++ch)
+                    for (int i = 0; i < 1000; ++i)
+                        if (! sameSample (big.getSample (ch, i), chunked.getSample (ch, i))) { identical = false; break; }
+                expect (identical, "a 1000-sample block into a chain prepared for 256 equals four smaller blocks, and does not overrun");
+                expect (allFinite (big), "finite");
+            }
+
+            beginTest ("EQ match raises the band where the reference is stronger");
+            {
+                // Reference: white noise plus a strong 9.3 kHz tone (the centre of the tenth EQ band). Current: plain noise.
+                auto reference = whiteNoise (2, samplesFor (3.0), 0.05f, 31u);
+                addSine (reference, 0, reference.getNumSamples(), 9300.0, 0.4f);
+                const auto current = whiteNoise (2, samplesFor (3.0), 0.05f, 32u);
+                const auto in = whiteNoise (2, samplesFor (4.0), 0.05f, 33u);
+
+                auto bandEnergy = [] (const juce::AudioBuffer<float>& b, double fromHz, double toHz)
+                {
+                    constexpr int order = 13, n = 1 << order;
+                    juce::dsp::FFT fft (order);
+                    juce::dsp::WindowingFunction<float> window (n, juce::dsp::WindowingFunction<float>::hann);
+                    std::vector<float> data ((size_t) (2 * n));
+                    double energy = 0.0;
+                    for (int start = samplesFor (1.0); start + n <= b.getNumSamples(); start += n)
+                    {
+                        std::fill (data.begin(), data.end(), 0.0f);
+                        std::copy (b.getReadPointer (0) + start, b.getReadPointer (0) + start + n, data.begin());
+                        window.multiplyWithWindowingTable (data.data(), (size_t) n);
+                        fft.performRealOnlyForwardTransform (data.data());
+                        for (int bin = 0; bin < n / 2; ++bin)
+                        {
+                            const double hz = bin * kSampleRate / n;
+                            if (hz >= fromHz && hz <= toHz) energy += (double) data[(size_t) 2 * bin] * data[(size_t) 2 * bin] + (double) data[(size_t) 2 * bin + 1] * data[(size_t) 2 * bin + 1];
+                        }
+                    }
+                    return 10.0 * std::log10 (energy + 1.0e-12);
+                };
+
+                auto renderWith = [&] (float eqAmount)
+                {
+                    MasteringChain chain;
+                    chain.prepare (kSampleRate, 2, 512);
+                    chain.setReferenceTrack (reference, kSampleRate);
+                    chain.setCurrentTrackAnalysis (current, kSampleRate);
+                    auto s = active (-0.3f, 0.0f, -23.0f);
+                    s.eqMatchAmount = eqAmount;
+                    chain.setSettings (s);
+                    auto b = in;
+                    for (int pos = 0; pos + 512 <= b.getNumSamples(); pos += 512)
+                    {
+                        juce::AudioBuffer<float> piece (b.getArrayOfWritePointers(), 2, pos, 512);
+                        chain.processBlock (piece);
+                    }
+                    return b;
+                };
+
+                const auto flat = renderWith (0.0f), matched = renderWith (1.0f);
+                const double lift = bandEnergy (matched, 9000.0, 9600.0) - bandEnergy (flat, 9000.0, 9600.0);
+                const double away = bandEnergy (matched, 1500.0, 2500.0) - bandEnergy (flat, 1500.0, 2500.0);
+                // The loudness trim holds the overall level, so both bands move together; what the EQ does is the difference.
+                expectWithinAbsoluteError (lift - away, 12.0, 2.0, "the 9.3 kHz band ends up about the 12 dB limit above a band well away (got " + juce::String (lift - away, 1) + " dB)");
             }
 
             beginTest ("the same input always gives the same output");

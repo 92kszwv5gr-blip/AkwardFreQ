@@ -10,13 +10,13 @@ namespace afq
         constexpr float kCrossoverFreqs[3] = { 150.0f, 1500.0f, 6000.0f };
         constexpr double kEqBandLowHz = 40.0;
         constexpr double kEqBandHighHz = 16000.0;
-        constexpr int kMeasurementIntervalSamplesAt44k = 4410; // ~100ms
     }
 
     void MasteringChain::prepare (double sampleRate, int numChannels, int maxBlockSize)
     {
         sampleRate_ = sampleRate;
         numChannels_ = numChannels;
+        maxBlockSize_ = juce::jmax (1, maxBlockSize);
 
         juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) maxBlockSize, (juce::uint32) numChannels };
 
@@ -40,12 +40,18 @@ namespace afq
         for (auto& f : eqFiltersLeft_)  f.prepare (monoSpec);
         for (auto& f : eqFiltersRight_) f.prepare (monoSpec);
         eqMatchGainDb_.fill (0.0f);
-        updateEqFilters();
+        // The coefficient objects are created here, once, and rewritten in place afterwards (no allocation on the audio thread).
+        for (int i = 0; i < kNumEqBands; ++i)
+        {
+            auto coeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter (sampleRate, (double) eqBandCenterHz_[(size_t) i], 1.4, 1.0f);
+            eqFiltersLeft_[(size_t) i].coefficients = coeffs;
+            eqFiltersRight_[(size_t) i].coefficients = coeffs;
+        }
+        appliedCompAmount_ = appliedEqAmount_ = -1.0f;
+        eqCurveChanged_.store (true);
+        wasBypassed_ = true;
 
-        loudnessMeter_.prepare (sampleRate, numChannels);
-        samplesSinceLastMeasurement_ = 0;
-        smoothedGainLinear_.reset (sampleRate, 0.3);
-        smoothedGainLinear_.setCurrentAndTargetValue (1.0f);
+        trim_.prepare (sampleRate, numChannels);
 
         limiter_.prepare (sampleRate, numChannels);
 
@@ -59,6 +65,7 @@ namespace afq
         for (auto& c : bandCompressors_) c.reset();
         for (auto& f : eqFiltersLeft_) f.reset();
         for (auto& f : eqFiltersRight_) f.reset();
+        trim_.reset();
         limiter_.reset();
     }
 
@@ -86,15 +93,23 @@ namespace afq
 
     void MasteringChain::updateEqFilters()
     {
+        // RBJ peaking EQ, the same maths as Coefficients::makePeakFilter, written into the existing coefficient objects so
+        // nothing is allocated. Left and right share one object per band.
+        constexpr double q = 1.4; // chosen so adjacent log-spaced bands overlap smoothly rather than combing
         for (int i = 0; i < kNumEqBands; ++i)
         {
-            const float gainDb = eqMatchGainDb_[(size_t) i] * settings_.eqMatchAmount;
-            const float gainLinear = juce::Decibels::decibelsToGain (juce::jlimit (-12.0f, 12.0f, gainDb));
-            // Q chosen so adjacent log-spaced bands overlap smoothly rather than combing.
-            auto coeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter (
-                sampleRate_, (double) eqBandCenterHz_[(size_t) i], 1.4, gainLinear);
-            eqFiltersLeft_[(size_t) i].coefficients = coeffs;
-            eqFiltersRight_[(size_t) i].coefficients = coeffs;
+            const float gainDb = juce::jlimit (-12.0f, 12.0f, eqMatchGainDb_[(size_t) i] * settings_.eqMatchAmount);
+            const double a = std::sqrt (std::pow (10.0, (double) gainDb / 20.0));
+            const double omega = 2.0 * juce::MathConstants<double>::pi * (double) eqBandCenterHz_[(size_t) i] / sampleRate_;
+            const double alpha = std::sin (omega) / (2.0 * q);
+            const double c2 = -2.0 * std::cos (omega);
+            const double a0 = 1.0 + alpha / a;
+            float* raw = eqFiltersLeft_[(size_t) i].coefficients->getRawCoefficients(); // b0, b1, b2, a1, a2, all over a0
+            raw[0] = (float) ((1.0 + alpha * a) / a0);
+            raw[1] = (float) (c2 / a0);
+            raw[2] = (float) ((1.0 - alpha * a) / a0);
+            raw[3] = (float) (c2 / a0);
+            raw[4] = (float) ((1.0 - alpha / a) / a0);
         }
     }
 
@@ -180,6 +195,7 @@ namespace afq
             for (int i = 0; i < kNumEqBands; ++i)
                 eqMatchGainDb_[(size_t) i] = juce::jlimit (-12.0f, 12.0f,
                     referenceBandEnergyDb_[(size_t) i] - currentBandEnergyDb_[(size_t) i]);
+        eqCurveChanged_.store (true);
     }
 
     void MasteringChain::setReferenceTrack (const juce::AudioBuffer<float>& referenceTrack, double sr)
@@ -190,18 +206,55 @@ namespace afq
             for (int i = 0; i < kNumEqBands; ++i)
                 eqMatchGainDb_[(size_t) i] = juce::jlimit (-12.0f, 12.0f,
                     referenceBandEnergyDb_[(size_t) i] - currentBandEnergyDb_[(size_t) i]);
+        eqCurveChanged_.store (true);
+    }
+
+    void MasteringChain::resetProcessingState()
+    {
+        // Everything except the limiter's delay line, which must keep the audio that is already in flight.
+        for (auto& f : lowpassSplits_) f.reset();
+        for (auto& f : highpassSplits_) f.reset();
+        for (auto& c : bandCompressors_) c.reset();
+        for (auto& f : eqFiltersLeft_) f.reset();
+        for (auto& f : eqFiltersRight_) f.reset();
+        trim_.reset();
     }
 
     void MasteringChain::processBlock (juce::AudioBuffer<float>& buffer)
     {
+        // A host may hand over more samples than it announced in prepareToPlay; work in pieces the scratch buffers fit.
+        const int total = buffer.getNumSamples();
+        for (int pos = 0; pos < total; pos += maxBlockSize_)
+        {
+            juce::AudioBuffer<float> piece (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), pos, juce::jmin (maxBlockSize_, total - pos));
+            processChunk (piece);
+        }
+    }
+
+    void MasteringChain::processChunk (juce::AudioBuffer<float>& buffer)
+    {
         if (settings_.bypass)
         {
             limiter_.delay (buffer);
+            wasBypassed_ = true;
             return;
         }
+        if (wasBypassed_)
+        {
+            resetProcessingState(); // the filters and meters last saw audio before the bypass
+            wasBypassed_ = false;
+        }
 
-        updateBandCompressors();
-        updateEqFilters();
+        if (! juce::exactlyEqual (settings_.compAmount, appliedCompAmount_))
+        {
+            updateBandCompressors();
+            appliedCompAmount_ = settings_.compAmount;
+        }
+        if (eqCurveChanged_.exchange (false) || ! juce::exactlyEqual (settings_.eqMatchAmount, appliedEqAmount_))
+        {
+            updateEqFilters();
+            appliedEqAmount_ = settings_.eqMatchAmount;
+        }
 
         const int numSamples = buffer.getNumSamples();
         const int numChannels = buffer.getNumChannels();
@@ -287,25 +340,13 @@ namespace afq
         }
 
         //---- Loudness trim ----
-        samplesSinceLastMeasurement_ += numSamples;
-        const int measurementInterval = (int) (kMeasurementIntervalSamplesAt44k * (sampleRate_ / 44100.0));
-        if (samplesSinceLastMeasurement_ >= measurementInterval)
-        {
-            samplesSinceLastMeasurement_ = 0;
-            const float measured = loudnessMeter_.measureShortTermLoudness (buffer);
-            lastMeasuredLoudness_.store (measured, std::memory_order_relaxed);
-            const float diffDb = juce::jlimit (-24.0f, 24.0f, settings_.targetLoudnessLufs - measured);
-            smoothedGainLinear_.setTargetValue (juce::Decibels::decibelsToGain (diffDb));
-        }
-        for (int i = 0; i < numSamples; ++i)
-        {
-            const float g = smoothedGainLinear_.getNextValue();
-            for (int ch = 0; ch < numChannels; ++ch)
-                buffer.setSample (ch, i, buffer.getSample (ch, i) * g);
-        }
+        trim_.setTargetLufs (settings_.targetLoudnessLufs);
+        trim_.apply (buffer);
 
         //---- Limiter ----
         limiter_.setCeilingDb (settings_.limiterCeilingDb);
         limiter_.process (buffer);
+
+        trim_.observeOutput (buffer);
     }
 }

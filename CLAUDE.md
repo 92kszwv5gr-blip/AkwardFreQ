@@ -29,8 +29,8 @@ ONNX Runtime. Developed by PsykoDogoa. `README.md` describes the product; this f
 
 Automated tests live in `tests/` (JUCE `UnitTest`, one console runner, `AkwardFreQTests`). They cover the onset detector and
 analysis helpers, both slicers, loop snapping, audio-to-MIDI, the one-shot cleaner, the loudness meter (against the BS.1770
-filter coefficients and the EBU Tech 3341 sine reference), the lookahead limiter and the mastering chain, and need no model or
-audio device:
+filter coefficients and the EBU Tech 3341 sine reference), the lookahead limiter, the loudness trim, the mastering chain and real-time safety (no heap allocation in the audio path), and need no
+model or audio device:
 
     cmake -B build-test -DAFQ_BUILD_TESTS=ON -DONNXRUNTIME_ROOT_DIR=/tmp/onnxruntime-linux/onnxruntime-linux-x64-1.20.1 \
           -DCMAKE_BUILD_TYPE=Debug -DCOPY_PLUGIN_AFTER_BUILD=OFF
@@ -46,6 +46,10 @@ audio device:
 - `tests/reference/*.txt` pin the current mastering output (0.1 dB tolerance). They record behaviour, not correctness.
   After an intended change: `AFQ_UPDATE_REFERENCE=1 ./AkwardFreQTests Mastering`, review the diff, commit it.
 - `build-test/` is git-ignored. Not covered yet: the separation engine, the UI, the plugin processor.
+- `RealtimeSafetyTests` replace global `operator new` (and wrap `malloc` on Linux) to count allocations while `MasteringChain::processBlock`,
+  the trim, the meters and the limiter run. Any new audio-thread code belongs in that file.
+- The Master tab's parameters reach the chain through `MasteringChain::setSettings` in `PluginProcessor::processBlock`; that call was
+  missing until recently, so the whole chain never ran. Nothing tests the processor itself yet.
 - The limiter keeps a count of samples its output clamp had to cut (`getClampedSampleCount()`); tests assert it is 0, because
   the output peak alone cannot tell a working lookahead from a broken one hidden by the clamp.
 - The onset detector's constants (log compression 0.05, relative floor 15% over +-4 s, sensitivity 6) were tuned on synthetic

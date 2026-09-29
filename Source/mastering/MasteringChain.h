@@ -5,6 +5,7 @@
 #include <atomic>
 #include "LoudnessMeter.h"
 #include "LookaheadLimiter.h"
+#include "LoudnessTrim.h"
 
 namespace afq
 {
@@ -48,9 +49,12 @@ namespace afq
         // The limiter's lookahead. Constant for a given sample rate; valid after prepare().
         int getLatencySamples() const noexcept { return limiter_.getLatencySamples(); }
 
-        // Safe to poll from the UI thread via a Timer — updated roughly every
-        // 100ms from the audio thread.
-        float getLastMeasuredLoudnessLufs() const noexcept { return lastMeasuredLoudness_.load (std::memory_order_relaxed); }
+        // Safe to poll from the UI thread via a Timer. The short-term (3 s) loudness of the finished output, updated every
+        // 100 ms from the audio thread; -70 until there is signal above the trim's gate.
+        float getLastMeasuredLoudnessLufs() const noexcept { return trim_.getOutputLoudnessLufs(); }
+
+        // The gain the loudness trim is applying right now, in dB.
+        float getTrimGainDb() const noexcept { return trim_.getGainDb(); }
 
     private:
         static constexpr int kNumBands = 4;
@@ -74,18 +78,19 @@ namespace afq
         std::array<float, kNumEqBands> referenceBandEnergyDb_ {};
         std::array<float, kNumEqBands> currentBandEnergyDb_ {};
 
-        // Loudness trim: periodically measure the (short, noisy) block loudness
-        // and retarget a heavily-smoothed gain toward targetLoudnessLufs. The
-        // 300ms smoothing ramp is what turns per-block noise into a slow, stable
-        // makeup-gain trim rather than a real BS.1770 integrated measurement.
-        LoudnessMeter loudnessMeter_;
-        int samplesSinceLastMeasurement_ = 0;
-        juce::LinearSmoothedValue<float> smoothedGainLinear_;
-        std::atomic<float> lastMeasuredLoudness_ { -23.0f };
+        // Loudness trim: steers the loudness of the finished output toward the target (see LoudnessTrim).
+        LoudnessTrim trim_;
 
         // Limiter.
         LookaheadLimiter limiter_;
 
+        int maxBlockSize_ = 512;
+        bool wasBypassed_ = true;
+        float appliedCompAmount_ = -1.0f, appliedEqAmount_ = -1.0f; // what the filters were last set for
+        std::atomic<bool> eqCurveChanged_ { true };
+
+        void processChunk (juce::AudioBuffer<float>& buffer);
+        void resetProcessingState();
         std::array<float, kNumEqBands> analyzeBandEnergyDb (const juce::AudioBuffer<float>& buffer, double sampleRate) const;
         void updateEqFilters();
         void updateBandCompressors();

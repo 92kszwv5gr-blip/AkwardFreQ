@@ -1,4 +1,5 @@
 #include "LoudnessMeter.h"
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -6,29 +7,16 @@ namespace afq
 {
     namespace
     {
-        // Runs one channel through both K-weighting sections and returns the weighted samples one at a time.
+        // Runs one channel through both K-weighting sections.
         class KWeightingFilter
         {
         public:
             explicit KWeightingFilter (const std::array<LoudnessMeter::Biquad, 2>& coefficients) : c_ (coefficients) {}
-
-            double process (double x) noexcept
-            {
-                return step (1, step (0, x));
-            }
+            double process (double x) noexcept { return LoudnessMeter::kWeight (c_, state_, x); }
 
         private:
             const std::array<LoudnessMeter::Biquad, 2>& c_;
-            std::array<double, 2> z1_ { 0.0, 0.0 }, z2_ { 0.0, 0.0 };
-
-            double step (size_t stage, double x) noexcept
-            {
-                const auto& c = c_[stage];
-                const double y = c.b0 * x + z1_[stage];
-                z1_[stage] = c.b1 * x - c.a1 * y + z2_[stage];
-                z2_[stage] = c.b2 * x - c.a2 * y;
-                return y;
-            }
+            LoudnessMeter::KWeightingState state_;
         };
 
         constexpr double kAbsoluteGateLufs = -70.0;
@@ -65,6 +53,19 @@ namespace afq
         rlb.a2 = (1.0 - k2 / rlbQ + k2 * k2) / a0b;
 
         return { shelf, rlb };
+    }
+
+    double LoudnessMeter::kWeight (const std::array<Biquad, 2>& coefficients, KWeightingState& state, double x) noexcept
+    {
+        for (size_t stage = 0; stage < 2; ++stage)
+        {
+            const auto& c = coefficients[stage];
+            const double y = c.b0 * x + state.z1[stage];
+            state.z1[stage] = c.b1 * x - c.a1 * y + state.z2[stage];
+            state.z2[stage] = c.b2 * x - c.a2 * y;
+            x = y;
+        }
+        return x;
     }
 
     void LoudnessMeter::prepare (double sampleRate, int numChannels)
@@ -153,5 +154,69 @@ namespace afq
         double relativeGatedMean = absoluteGatedMean;
         gatedMean (powerToLufs (absoluteGatedMean) + kRelativeGateLu, relativeGatedMean);
         return (float) powerToLufs (relativeGatedMean);
+    }
+
+    //==============================================================================
+    void StreamingLoudnessMeter::prepare (double sampleRate, int numChannels, double windowSeconds)
+    {
+        coefficients_ = LoudnessMeter::kWeightingCoefficients (sampleRate);
+        filters_.assign ((size_t) juce::jmax (1, numChannels), LoudnessMeter::KWeightingState {});
+        hopSamples_ = juce::jmax (1, (int) std::lround (sampleRate * kHopSeconds));
+        hopPower_.assign ((size_t) juce::jmax (1, (int) std::lround (windowSeconds / kHopSeconds)), 0.0);
+        reset();
+    }
+
+    void StreamingLoudnessMeter::reset() noexcept
+    {
+        for (auto& f : filters_) f = {};
+        std::fill (hopPower_.begin(), hopPower_.end(), 0.0);
+        hopFill_ = 0;
+        hopSum_ = 0.0;
+        ringPos_ = 0;
+        ringCount_ = 0;
+    }
+
+    bool StreamingLoudnessMeter::process (const juce::AudioBuffer<float>& block) noexcept
+    {
+        const int numChannels = juce::jmin (block.getNumChannels(), (int) filters_.size());
+        const int numSamples = block.getNumSamples();
+        bool completedHop = false;
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                const double y = LoudnessMeter::kWeight (coefficients_, filters_[(size_t) ch], (double) block.getSample (ch, i));
+                hopSum_ += y * y;
+            }
+            if (++hopFill_ == hopSamples_)
+            {
+                hopPower_[(size_t) ringPos_] = hopSum_ / hopSamples_;
+                ringPos_ = ringPos_ + 1 == (int) hopPower_.size() ? 0 : ringPos_ + 1;
+                ringCount_ = juce::jmin (ringCount_ + 1, (int) hopPower_.size());
+                hopFill_ = 0;
+                hopSum_ = 0.0;
+                completedHop = true;
+            }
+        }
+        return completedHop;
+    }
+
+    StreamingLoudnessMeter::Reading StreamingLoudnessMeter::read (float gateLufs) const noexcept
+    {
+        // Only hops already completed count. The ring holds the last ringCount_ of them.
+        double sum = 0.0;
+        int counted = 0;
+        for (int k = 0; k < ringCount_; ++k)
+        {
+            const double p = hopPower_[(size_t) k];
+            if (LoudnessMeter::powerToLufs (p) > (double) gateLufs) { sum += p; ++counted; }
+        }
+        Reading r;
+        r.hops = counted;
+        if (ringCount_ > 0)
+            r.latestHopLufs = (float) LoudnessMeter::powerToLufs (hopPower_[(size_t) (ringPos_ == 0 ? (int) hopPower_.size() - 1 : ringPos_ - 1)]);
+        if (counted > 0) r.lufs = (float) LoudnessMeter::powerToLufs (sum / counted);
+        return r;
     }
 }
