@@ -3,6 +3,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_core/juce_core.h>
 #include <cmath>
+#include <cstring>
 #include <random>
 #include <vector>
 
@@ -77,6 +78,9 @@ namespace afq::test
         if (desiredBehaviourHolds) t.expect (false, "KNOWN ISSUE NOW FIXED - turn this into a normal check: " + description);
         else t.logMessage ("  KNOWN ISSUE (not counted): " + description);
     }
+
+    // Exact equality for samples: for tests that assert bit-identical output, where a tolerance would hide the difference.
+    inline bool sameSample (float a, float b) { return std::memcmp (&a, &b, sizeof (float)) == 0; }
 
     inline float peakOf (const juce::AudioBuffer<float>& b, int start = 0, int end = -1)
     {

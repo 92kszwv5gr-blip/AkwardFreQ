@@ -26,6 +26,7 @@ namespace afq
     {
         hostSampleRate_ = sampleRate;
         masteringChain_.prepare (sampleRate, juce::jmax (1, getTotalNumOutputChannels()), samplesPerBlock);
+        setLatencySamples (masteringChain_.getLatencySamples()); // the limiter's lookahead
         masteringVstChain_.prepareAll (sampleRate, samplesPerBlock, juce::jmax (1, getTotalNumOutputChannels()));
 
         const int64_t captureCapacity = (int64_t) (sampleRate * 60.0 * kMaxCaptureMinutes);

@@ -4,12 +4,13 @@
 #include <array>
 #include <atomic>
 #include "LoudnessMeter.h"
+#include "LookaheadLimiter.h"
 
 namespace afq
 {
     // Real DSP mastering chain: 4-band compressor (Linkwitz-Riley crossover split),
     // optional reference-track EQ matching, automatic loudness trim toward a
-    // target LUFS-ish level, and a final brickwall limiter.
+    // target loudness, and a final lookahead brickwall limiter.
     //
     // EQ matching needs an offline analysis pass (there's no single-instant
     // "target spectrum" to chase in real time) — call setCurrentTrackAnalysis()
@@ -40,8 +41,12 @@ namespace afq
         void setReferenceTrack (const juce::AudioBuffer<float>& referenceTrack, double sampleRate);
         bool hasReference() const noexcept { return hasReference_ && hasCurrentAnalysis_; }
 
-        // Real-time safe.
+        // Real-time safe. The audio is delayed by getLatencySamples() whether or not the chain is bypassed, so
+        // toggling bypass does not shift the timing.
         void processBlock (juce::AudioBuffer<float>& buffer);
+
+        // The limiter's lookahead. Constant for a given sample rate; valid after prepare().
+        int getLatencySamples() const noexcept { return limiter_.getLatencySamples(); }
 
         // Safe to poll from the UI thread via a Timer — updated roughly every
         // 100ms from the audio thread.
@@ -79,7 +84,7 @@ namespace afq
         std::atomic<float> lastMeasuredLoudness_ { -23.0f };
 
         // Limiter.
-        juce::dsp::Limiter<float> limiter_;
+        LookaheadLimiter limiter_;
 
         std::array<float, kNumEqBands> analyzeBandEnergyDb (const juce::AudioBuffer<float>& buffer, double sampleRate) const;
         void updateEqFilters();

@@ -1,106 +1,157 @@
 #include "LoudnessMeter.h"
 #include <cmath>
+#include <vector>
 
 namespace afq
 {
+    namespace
+    {
+        // Runs one channel through both K-weighting sections and returns the weighted samples one at a time.
+        class KWeightingFilter
+        {
+        public:
+            explicit KWeightingFilter (const std::array<LoudnessMeter::Biquad, 2>& coefficients) : c_ (coefficients) {}
+
+            double process (double x) noexcept
+            {
+                return step (1, step (0, x));
+            }
+
+        private:
+            const std::array<LoudnessMeter::Biquad, 2>& c_;
+            std::array<double, 2> z1_ { 0.0, 0.0 }, z2_ { 0.0, 0.0 };
+
+            double step (size_t stage, double x) noexcept
+            {
+                const auto& c = c_[stage];
+                const double y = c.b0 * x + z1_[stage];
+                z1_[stage] = c.b1 * x - c.a1 * y + z2_[stage];
+                z2_[stage] = c.b2 * x - c.a2 * y;
+                return y;
+            }
+        };
+
+        constexpr double kAbsoluteGateLufs = -70.0;
+        constexpr double kRelativeGateLu = -10.0;
+        constexpr double kHopSeconds = 0.1; // 75% overlap
+    }
+
+    std::array<LoudnessMeter::Biquad, 2> LoudnessMeter::kWeightingCoefficients (double sampleRate)
+    {
+        constexpr double pi = 3.14159265358979323846;
+
+        // Stage 1: the head-related high shelf.
+        constexpr double shelfHz = 1681.974450955533, shelfGainDb = 3.999843853973347, shelfQ = 0.7071752369554196;
+        const double k1 = std::tan (pi * shelfHz / sampleRate);
+        const double vh = std::pow (10.0, shelfGainDb / 20.0);
+        const double vb = std::pow (vh, 0.4996667741545416);
+        const double a0 = 1.0 + k1 / shelfQ + k1 * k1;
+        Biquad shelf;
+        shelf.b0 = (vh + vb * k1 / shelfQ + k1 * k1) / a0;
+        shelf.b1 = 2.0 * (k1 * k1 - vh) / a0;
+        shelf.b2 = (vh - vb * k1 / shelfQ + k1 * k1) / a0;
+        shelf.a1 = 2.0 * (k1 * k1 - 1.0) / a0;
+        shelf.a2 = (1.0 - k1 / shelfQ + k1 * k1) / a0;
+
+        // Stage 2: the RLB high-pass. The numerator is [1, -2, 1] and is not divided by a0, as in the standard.
+        constexpr double rlbHz = 38.13547087602444, rlbQ = 0.5003270373238773;
+        const double k2 = std::tan (pi * rlbHz / sampleRate);
+        const double a0b = 1.0 + k2 / rlbQ + k2 * k2;
+        Biquad rlb;
+        rlb.b0 = 1.0;
+        rlb.b1 = -2.0;
+        rlb.b2 = 1.0;
+        rlb.a1 = 2.0 * (k2 * k2 - 1.0) / a0b;
+        rlb.a2 = (1.0 - k2 / rlbQ + k2 * k2) / a0b;
+
+        return { shelf, rlb };
+    }
+
     void LoudnessMeter::prepare (double sampleRate, int numChannels)
     {
+        juce::ignoreUnused (numChannels); // every channel is weighted 1.0, so the channel count needs no state
         sampleRate_ = sampleRate;
-        numChannels_ = numChannels;
+        kWeighting_ = kWeightingCoefficients (sampleRate);
     }
 
-    void LoudnessMeter::applyKWeighting (const juce::AudioBuffer<float>& in, juce::AudioBuffer<float>& out) const
+    double LoudnessMeter::powerToLufs (double power)
     {
-        out.setSize (in.getNumChannels(), in.getNumSamples(), false, false, true);
+        return power > 1.0e-12 ? -0.691 + 10.0 * std::log10 (power) : kAbsoluteGateLufs;
+    }
 
-        auto shelfCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighShelf (
-            sampleRate_, 1500.0, 0.7071, juce::Decibels::decibelsToGain (4.0f));
-        auto hpCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighPass (sampleRate_, 60.0, 0.5);
+    float LoudnessMeter::measureShortTermLoudness (const juce::AudioBuffer<float>& block) const
+    {
+        const int numSamples = block.getNumSamples();
+        if (numSamples == 0) return (float) kAbsoluteGateLufs;
 
-        for (int ch = 0; ch < in.getNumChannels(); ++ch)
+        // BS.1770 sums the channels' mean-square powers.
+        double power = 0.0;
+        for (int ch = 0; ch < block.getNumChannels(); ++ch)
         {
-            juce::dsp::IIR::Filter<float> shelf, highpass;
-            shelf.coefficients = shelfCoeffs;
-            highpass.coefficients = hpCoeffs;
-
-            out.copyFrom (ch, 0, in, ch, 0, in.getNumSamples());
-            auto* data = out.getWritePointer (ch);
-            juce::dsp::AudioBlock<float> block (&data, 1, (size_t) out.getNumSamples());
-            juce::dsp::ProcessContextReplacing<float> ctx (block);
-            shelf.process (ctx);
-            highpass.process (ctx);
-        }
-    }
-
-    double LoudnessMeter::meanSquareToLkfs (double meanSquare)
-    {
-        return meanSquare > 1.0e-12 ? -0.691 + 10.0 * std::log10 (meanSquare) : -70.0;
-    }
-
-    float LoudnessMeter::measureShortTermLoudness (const juce::AudioBuffer<float>& block)
-    {
-        juce::AudioBuffer<float> filtered;
-        applyKWeighting (block, filtered);
-
-        double sumSq = 0.0;
-        const int numCh = filtered.getNumChannels();
-        const int numSamples = filtered.getNumSamples();
-        for (int ch = 0; ch < numCh; ++ch)
-        {
-            const float* d = filtered.getReadPointer (ch);
-            for (int i = 0; i < numSamples; ++i) sumSq += (double) d[i] * d[i];
-        }
-        const double meanSq = (numCh > 0 && numSamples > 0) ? sumSq / (numCh * numSamples) : 0.0;
-        return (float) meanSquareToLkfs (meanSq);
-    }
-
-    float LoudnessMeter::measureIntegratedLoudness (const juce::AudioBuffer<float>& buffer)
-    {
-        juce::AudioBuffer<float> filtered;
-        applyKWeighting (buffer, filtered);
-
-        const int numCh = filtered.getNumChannels();
-        const int numSamples = filtered.getNumSamples();
-        const int blockSize = (int) (sampleRate_ * 0.4);
-        const int hopSize = (int) (sampleRate_ * 0.1);
-        if (blockSize <= 0 || numSamples < blockSize) return -70.0f;
-
-        std::vector<double> blockMeanSq;
-        blockMeanSq.reserve ((size_t) (numSamples / hopSize));
-
-        for (int pos = 0; pos + blockSize <= numSamples; pos += hopSize)
-        {
-            double sumSq = 0.0;
-            for (int ch = 0; ch < numCh; ++ch)
+            KWeightingFilter filter (kWeighting_);
+            const float* data = block.getReadPointer (ch);
+            double sumSquares = 0.0;
+            for (int i = 0; i < numSamples; ++i)
             {
-                const float* d = filtered.getReadPointer (ch) + pos;
-                for (int i = 0; i < blockSize; ++i) sumSq += (double) d[i] * d[i];
+                const double y = filter.process ((double) data[i]);
+                sumSquares += y * y;
             }
-            blockMeanSq.push_back (numCh > 0 ? sumSq / (numCh * blockSize) : 0.0);
+            power += sumSquares / numSamples;
         }
-        if (blockMeanSq.empty()) return -70.0f;
+        return (float) powerToLufs (power);
+    }
 
-        // Absolute gate: discard blocks below -70 LUFS.
-        std::vector<double> absGated;
-        for (auto m : blockMeanSq)
-            if (meanSquareToLkfs (m) > -70.0) absGated.push_back (m);
-        if (absGated.empty()) return -70.0f;
+    float LoudnessMeter::measureIntegratedLoudness (const juce::AudioBuffer<float>& buffer) const
+    {
+        // A block is four consecutive hops (400 ms with 75% overlap), so summing the K-weighted squares once per hop
+        // gives every block's power without keeping the whole filtered signal in memory.
+        const int numSamples = buffer.getNumSamples();
+        const int hopSize = (int) (sampleRate_ * kHopSeconds);
+        constexpr int kHopsPerBlock = 4;
+        const int blockSize = hopSize * kHopsPerBlock;
+        if (hopSize <= 0 || numSamples < blockSize) return (float) kAbsoluteGateLufs;
 
-        double sumAbs = 0.0;
-        for (auto m : absGated) sumAbs += m;
-        const double ungatedMeanPower = sumAbs / (double) absGated.size();
-        const double relativeThreshold = meanSquareToLkfs (ungatedMeanPower) - 10.0;
+        const int numHops = numSamples / hopSize;
+        const int numBlocks = numHops - kHopsPerBlock + 1;
+        std::vector<double> hopSquares ((size_t) numHops);
+        std::vector<double> blockPower ((size_t) numBlocks, 0.0);
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        {
+            KWeightingFilter filter (kWeighting_);
+            const float* data = buffer.getReadPointer (ch);
+            for (int h = 0; h < numHops; ++h)
+            {
+                double sum = 0.0;
+                for (int i = h * hopSize; i < (h + 1) * hopSize; ++i)
+                {
+                    const double y = filter.process ((double) data[i]);
+                    sum += y * y;
+                }
+                hopSquares[(size_t) h] = sum;
+            }
+            for (int b = 0; b < numBlocks; ++b)
+            {
+                double sum = 0.0;
+                for (int k = 0; k < kHopsPerBlock; ++k) sum += hopSquares[(size_t) (b + k)];
+                blockPower[(size_t) b] += sum / blockSize;
+            }
+        }
 
-        // Relative gate: discard blocks more than 10dB below the ungated mean.
-        std::vector<double> relGated;
-        for (auto m : absGated)
-            if (meanSquareToLkfs (m) > relativeThreshold) relGated.push_back (m);
-        if (relGated.empty()) relGated = absGated;
+        auto gatedMean = [&blockPower] (double thresholdLufs, double& mean)
+        {
+            double sum = 0.0;
+            size_t count = 0;
+            for (double p : blockPower)
+                if (powerToLufs (p) > thresholdLufs) { sum += p; ++count; }
+            if (count > 0) mean = sum / (double) count;
+            return count > 0;
+        };
 
-        double sumRel = 0.0;
-        for (auto m : relGated) sumRel += m;
-        const double finalMeanPower = sumRel / (double) relGated.size();
+        double absoluteGatedMean = 0.0;
+        if (! gatedMean (kAbsoluteGateLufs, absoluteGatedMean)) return (float) kAbsoluteGateLufs;
 
-        return (float) meanSquareToLkfs (finalMeanPower);
+        double relativeGatedMean = absoluteGatedMean;
+        gatedMean (powerToLufs (absoluteGatedMean) + kRelativeGateLu, relativeGatedMean);
+        return (float) powerToLufs (relativeGatedMean);
     }
 }

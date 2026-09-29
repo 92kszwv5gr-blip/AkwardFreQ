@@ -47,7 +47,7 @@ namespace afq
         smoothedGainLinear_.reset (sampleRate, 0.3);
         smoothedGainLinear_.setCurrentAndTargetValue (1.0f);
 
-        limiter_.prepare (spec);
+        limiter_.prepare (sampleRate, numChannels);
 
         reset();
     }
@@ -194,7 +194,11 @@ namespace afq
 
     void MasteringChain::processBlock (juce::AudioBuffer<float>& buffer)
     {
-        if (settings_.bypass) return;
+        if (settings_.bypass)
+        {
+            limiter_.delay (buffer);
+            return;
+        }
 
         updateBandCompressors();
         updateEqFilters();
@@ -301,12 +305,7 @@ namespace afq
         }
 
         //---- Limiter ----
-        limiter_.setThreshold (settings_.limiterCeilingDb);
-        {
-            juce::dsp::AudioBlock<float> block (buffer);
-            auto blockSub = block.getSubBlock (0, (size_t) numSamples);
-            juce::dsp::ProcessContextReplacing<float> ctx (blockSub);
-            limiter_.process (ctx);
-        }
+        limiter_.setCeilingDb (settings_.limiterCeilingDb);
+        limiter_.process (buffer);
     }
 }

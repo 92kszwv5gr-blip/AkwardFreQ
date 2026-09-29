@@ -1,6 +1,6 @@
 #include <juce_core/juce_core.h>
 #include "TestUtils.h"
-#include "mastering/LoudnessMeter.h"
+#include "mastering/LookaheadLimiter.h"
 #include "mastering/MasteringChain.h"
 
 namespace afq
@@ -27,6 +27,13 @@ namespace afq
             return out;
         }
 
+        static int latencyOf()
+        {
+            MasteringChain chain;
+            chain.prepare (test::kSampleRate, 2, 512);
+            return chain.getLatencySamples();
+        }
+
         static MasteringChain::Settings active (float ceilingDb = -0.3f, float comp = 0.35f, float target = -8.0f)
         {
             MasteringChain::Settings s;
@@ -51,17 +58,51 @@ namespace afq
         {
             using namespace test;
 
-            beginTest ("bypass leaves the audio untouched");
+            beginTest ("bypass leaves the audio untouched, delayed by the reported latency");
             {
                 const auto in = testMix();
                 MasteringChain::Settings s;
                 s.bypass = true;
                 const auto out = render (s, in);
+                const int latency = latencyOf();
+                expectEquals (latency, (int) std::lround (LookaheadLimiter::kLookaheadSeconds * kSampleRate), "the chain reports the limiter's lookahead");
                 bool identical = true;
                 for (int ch = 0; ch < 2 && identical; ++ch)
                     for (int i = 0; i < in.getNumSamples(); ++i)
-                        if (out.getSample (ch, i) != in.getSample (ch, i)) { identical = false; break; }
-                expect (identical, "output is bit-identical to the input");
+                        if (! sameSample (out.getSample (ch, i), i < latency ? 0.0f : in.getSample (ch, i - latency))) { identical = false; break; }
+                expect (identical, "output is bit-identical to the input delayed by the latency");
+            }
+
+            beginTest ("toggling bypass does not shift the timing");
+            {
+                const auto in = testMix();
+                constexpr int blockSize = 256;
+                MasteringChain chain;
+                chain.prepare (kSampleRate, 2, blockSize);
+                const int latency = chain.getLatencySamples();
+                MasteringChain::Settings on = active(), off;
+                off.bypass = true;
+
+                bool bypassedBlocksAligned = true;
+                for (int block = 0; (block + 1) * blockSize <= in.getNumSamples(); ++block)
+                {
+                    const bool bypassed = block < 10 || block >= 20; // blocks 10..19 are processed
+                    chain.setSettings (bypassed ? off : on);
+                    juce::AudioBuffer<float> b (2, blockSize);
+                    for (int ch = 0; ch < 2; ++ch) b.copyFrom (ch, 0, in, ch, block * blockSize, blockSize);
+                    chain.processBlock (b);
+                    if (! bypassed) continue;
+                    for (int ch = 0; ch < 2; ++ch)
+                        for (int i = 0; i < blockSize; ++i)
+                        {
+                            // The delay line holds what the chain output before the switch, so the first `latency` samples after
+                            // it are that (processed) audio; from then on the output is the raw input.
+                            const int src = block * blockSize + i - latency;
+                            if (block >= 20 && src < 20 * blockSize) continue;
+                            if (! test::sameSample (b.getSample (ch, i), src < 0 ? 0.0f : in.getSample (ch, src))) bypassedBlocksAligned = false;
+                        }
+                }
+                expect (bypassedBlocksAligned, "bypassed audio is the input delayed by exactly the latency, before and after a processed stretch");
             }
 
             beginTest ("processing changes the audio and stays finite");
@@ -80,15 +121,15 @@ namespace afq
 
             beginTest ("the limiter ceiling is a real ceiling");
             {
-                // juce::dsp::Limiter compresses above its threshold and then hard-clips at 0 dBFS, not at the
-                // threshold. So "Limiter Ceiling -6 dB" is a threshold: peaks can still reach 0 dBFS.
+                // Full-scale noise through the whole chain, including the loudness trim's makeup gain.
                 const auto in = whiteNoise (2, samplesFor (2.0), 1.0f, 5);
-                for (float ceilingDb : { -1.0f, -6.0f })
-                {
-                    const float peak = peakOf (render (active (ceilingDb, 0.0f), in), samplesFor (0.5));
-                    knownIssue (*this, peak <= juce::Decibels::decibelsToGain (ceilingDb) * 1.05f,
-                                "peak " + juce::String (toDb (peak), 1) + " dBFS with the ceiling set to " + juce::String (ceilingDb) + " dB");
-                }
+                for (float ceilingDb : { -6.0f, -3.0f, -1.0f, -0.3f, 0.0f })
+                    for (float comp : { 0.0f, 0.35f, 1.0f })
+                    {
+                        const float peak = peakOf (render (active (ceilingDb, comp), in));
+                        expectLessOrEqual (peak, juce::Decibels::decibelsToGain (ceilingDb),
+                                           "peak " + juce::String (toDb (peak), 2) + " dBFS with ceiling " + juce::String (ceilingDb) + " dB, comp " + juce::String (comp));
+                    }
             }
 
             beginTest ("the same input always gives the same output");
@@ -99,7 +140,7 @@ namespace afq
                 bool identical = true;
                 for (int ch = 0; ch < 2 && identical; ++ch)
                     for (int i = 0; i < in.getNumSamples(); ++i)
-                        if (a.getSample (ch, i) != b.getSample (ch, i)) { identical = false; break; }
+                        if (! sameSample (a.getSample (ch, i), b.getSample (ch, i))) { identical = false; break; }
                 expect (identical, "two fresh chains agree exactly");
             }
 
@@ -114,23 +155,6 @@ namespace afq
                     values.push_back (toDb (rmsOf (out, samplesFor (0.2) * block, samplesFor (0.2) * (block + 1))));
                 const auto problem = Reference::compare ("mastering_default", values, 0.1);
                 expect (problem.isEmpty(), problem);
-            }
-
-            beginTest ("loudness meter");
-            {
-                LoudnessMeter meter;
-                meter.prepare (kSampleRate, 2);
-
-                auto tone = [] (float amp) { auto b = silence (2, samplesFor (4.0)); addSine (b, 0, b.getNumSamples(), 1000.0, amp); return b; };
-                const float quiet = meter.measureIntegratedLoudness (tone (0.1f));
-                const float loud = meter.measureIntegratedLoudness (tone (0.2f));
-                expectWithinAbsoluteError (loud - quiet, 6.02f, 0.2f, "doubling the amplitude adds 6 dB");
-                // BS.1770 sums the channel powers, so a stereo 1 kHz sine at -20 dBFS should read about -20.7 LUFS.
-                // The meter averages the channels instead, so it reads about 3 dB low for stereo (mono is unaffected).
-                knownIssue (*this, std::abs (quiet - (-20.7f)) < 1.5f,
-                            "stereo 1 kHz sine at -20 dBFS reads " + juce::String (quiet, 2) + " LUFS, BS.1770 says about -20.7");
-                expectLessThan (meter.measureIntegratedLoudness (silence (2, samplesFor (2.0))), -60.0f, "silence reads far below normal levels");
-                expect (std::isfinite (meter.measureIntegratedLoudness (silence (2, 100))), "very short input stays finite");
             }
         }
     };

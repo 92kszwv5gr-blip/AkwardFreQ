@@ -13,6 +13,8 @@ target_sources(AkwardFreQTests PRIVATE
     AudioToMidiTests.cpp
     OneShotCleanerTests.cpp
     MasteringTests.cpp
+        LoudnessMeterTests.cpp
+        LookaheadLimiterTests.cpp
 
     # The code under test, compiled straight into the runner (no plugin, no ONNX Runtime needed).
     ../Source/separation/AnalysisUtils.cpp
@@ -22,6 +24,7 @@ target_sources(AkwardFreQTests PRIVATE
     ../Source/midi/AudioToMidiConverter.cpp
     ../Source/export/OneShotCleaner.cpp
     ../Source/mastering/LoudnessMeter.cpp
+    ../Source/mastering/LookaheadLimiter.cpp
     ../Source/mastering/MasteringChain.cpp
 )
 
