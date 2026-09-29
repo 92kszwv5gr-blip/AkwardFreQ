@@ -59,7 +59,12 @@ namespace afq
                 cost += d * d;
             }
 
-            if (cost < bestCost) { bestCost = cost; bestDelta = delta; foundValid = true; }
+            // On an exact tie (silence, or perfectly periodic audio) prefer the position closest to the bar grid;
+            // otherwise the first candidate, the far left of the search window, would always win.
+            constexpr double kTieEps = 1.0e-12;
+            const bool clearlyBetter = cost < bestCost - kTieEps;
+            const bool tieButCloser = std::abs (cost - bestCost) <= kTieEps && std::abs (delta) < std::abs (bestDelta);
+            if (clearlyBetter || tieButCloser) { bestCost = cost; bestDelta = delta; foundValid = true; }
         }
 
         result.startSample = foundValid ? (gridStart + bestDelta) : gridStart;

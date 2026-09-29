@@ -18,6 +18,9 @@ namespace afq
                                                                   const Settings& settings)
     {
         juce::MidiMessageSequence seq;
+        // Clamp to the buffer: a range that overruns it would otherwise read past the end.
+        startSample = juce::jlimit ((int64_t) 0, (int64_t) buffer.getNumSamples(), startSample);
+        endSample = juce::jlimit (startSample, (int64_t) buffer.getNumSamples(), endSample);
         const int64_t rangeLen = endSample - startSample;
         if (rangeLen <= 0) return seq;
 
