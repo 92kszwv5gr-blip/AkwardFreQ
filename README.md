@@ -1,11 +1,58 @@
 # AkwardFreQ
 
+*Developed by **PsykoDogoa**.*
+
 A VST3 plugin for Ableton (Windows) that splits a psytrance-family track into
 genre-specific layers (kick, bass, hi-hats, percussion, breakbeat, synth
 lead, stabs, atmospheres, fx, zaps, glitches), applies a real mastering
 chain, and exports the isolated layers as a tagged sample pack — with an
 in-plugin correction UI so misclassified layers can be fixed and fed back
 into retraining.
+
+## Downloads
+
+Prebuilt binaries, from the exact commit this README describes — see
+["Tried it — does it actually work?"](#tried-it--does-it-actually-work) for
+how they were validated:
+
+| Platform | File | Notes |
+|---|---|---|
+| Windows (Ableton) | [`releases/AkwardFreQ-Windows.zip`](releases/AkwardFreQ-Windows.zip) | `AkwardFreQ.vst3` + `AkwardFreQ.exe` (standalone) + `onnxruntime.dll`. Statically-linked mingw runtime — no extra DLLs needed beyond what's in the zip. |
+| Linux (test/preview) | [`releases/AkwardFreQ-Linux-Standalone.zip`](releases/AkwardFreQ-Linux-Standalone.zip) | Runs as its own app, not a VST3 — for trying the plugin without Ableton at all. |
+
+Neither package includes the HT-Demucs model (`htdemucs.onnx`, ~300MB —
+too large to bundle). See **Quick Start** below for the one-command export.
+
+## Quick Start (Ableton, Windows)
+
+1. Download and unzip `releases/AkwardFreQ-Windows.zip`.
+2. Get the model — needed for AI stem separation, one command:
+   ```
+   git clone <this repo>
+   cd AkwardFreQ/tools
+   pip install -r requirements.txt
+   python export_demucs_onnx.py --output ../Models/htdemucs.onnx
+   ```
+   This downloads Meta's pretrained HT-Demucs weights and converts them to
+   an `.onnx` file — takes a few minutes, needs Python 3.10+.
+3. Copy `AkwardFreQ.vst3` (the whole folder) into
+   `%COMMONPROGRAMFILES%\VST3` (typically
+   `C:\Program Files\Common Files\VST3`).
+4. Copy `onnxruntime.dll` and `Models\htdemucs.onnx` into
+   `...\VST3\AkwardFreQ.vst3\Contents\x86_64-win\`, next to the plugin
+   binary — that's where the plugin looks for both at load time.
+5. In Ableton: Preferences → Plug-ins → Rescan. AkwardFreQ shows up under
+   VST3.
+6. In the plugin: **Split tab** → **Import Track...** (or **Start Capture**
+   to record Ableton's own playback) → watch real HT-Demucs separation run
+   → correct any misclassified region in the list below the waveform if
+   needed → move to **Master** for mastering/VST-chain processing, **Export**
+   /**Instrument**/**Drum Chop** to get stems, one-shots, or chopped samples
+   out, or **MIDI** to transcribe a region.
+
+Without the model, everything except AI stem separation still works (drum
+chopping's onset detection, mastering, VST hosting, exports, presets — none
+of that needs `htdemucs.onnx`).
 
 ## Features
 
@@ -255,6 +302,34 @@ A few things worth knowing about how this is scoped:
 
 See `Source/presets/PresetManager.h` for the on-disk format and
 `Source/ui/PresetBar.h` for the reusable dropdown UI.
+
+## Tech stack
+
+- **C++17 / [JUCE](https://juce.com/)** — the plugin framework: audio
+  processing graph, cross-platform GUI, VST3 client/host code, plugin state
+  serialization. Fetched automatically via CMake `FetchContent`, not
+  vendored in this repo.
+- **CMake ≥ 3.22** — build system, for both the normal MSVC Windows build
+  and the mingw-w64 cross-build.
+- **[ONNX Runtime](https://onnxruntime.ai/)** (C++ API, CPU execution
+  provider) — runs the exported HT-Demucs model for stem separation.
+- **[HT-Demucs](https://github.com/facebookresearch/demucs)** (Meta's
+  pretrained hybrid-transformer Demucs v4) — the actual source-separation
+  model; only its `drums`/`bass`/`other` split is used, exported once
+  offline to ONNX and never retrained from scratch.
+- **PyTorch** (offline tooling only, not linked into the plugin) — used by
+  `tools/export_demucs_onnx.py` to load HT-Demucs and trace it to ONNX,
+  including a custom real-tensor STFT/ISTFT reimplementation
+  (`tools/_stft_onnx_patch.py`) since HT-Demucs's native complex-dtype STFT
+  isn't ONNX-exportable.
+- **scikit-learn** (offline tooling only) — trains the small optional
+  layer-classifier model in `tools/retrain_layer_classifier.py` from your
+  in-plugin corrections.
+- **VST3 SDK** (bundled with JUCE) — plugin format, and the format this
+  plugin also *hosts* other VST3s in (`Source/vsthost/`).
+- **mingw-w64 + Wine** — used only for the Linux-hosted cross-compile path
+  (`toolchain-mingw64.cmake`) that produced the Windows binaries in
+  `releases/`, as a substitute for a real Windows/Visual-Studio machine.
 
 ## Building (Windows)
 
