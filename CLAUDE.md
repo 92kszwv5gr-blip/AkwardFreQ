@@ -27,8 +27,10 @@ ONNX Runtime. Developed by PsykoDogoa. `README.md` describes the product; this f
 
 ### Tests
 
-Automated tests live in `tests/` (JUCE `UnitTest`, one console runner, `AkwardFreQTests`). They cover the slicers,
-loop snapping, audio-to-MIDI, the one-shot cleaner and the mastering chain, and need no model or audio device:
+Automated tests live in `tests/` (JUCE `UnitTest`, one console runner, `AkwardFreQTests`). They cover the onset detector and
+analysis helpers, both slicers, loop snapping, audio-to-MIDI, the one-shot cleaner, the loudness meter (against the BS.1770
+filter coefficients and the EBU Tech 3341 sine reference), the lookahead limiter and the mastering chain, and need no model or
+audio device:
 
     cmake -B build-test -DAFQ_BUILD_TESTS=ON -DONNXRUNTIME_ROOT_DIR=/tmp/onnxruntime-linux/onnxruntime-linux-x64-1.20.1 \
           -DCMAKE_BUILD_TYPE=Debug -DCOPY_PLUGIN_AFTER_BUILD=OFF
@@ -40,11 +42,14 @@ loop snapping, audio-to-MIDI, the one-shot cleaner and the mastering chain, and 
 - Write the failing test first and watch it fail. To prove a test can fail, revert the fix, rebuild and rerun.
 - `KNOWN ISSUE` lines are real defects recorded with `knownIssue()` (in `tests/TestUtils.h`). They count as nothing while the
   behaviour is wrong and the test fails when it starts holding, so fixing the code forces you to promote the check to a real one.
-  Current ones: onset detector over-triggers on noisy material, DrumSlicer therefore over-slices, transcription of a 3-note melody
-  gives 14 notes, the limiter is not a true ceiling (peaks reach 0 dBFS), the loudness meter reads stereo about 3 dB low.
+  Current one: a hard-cut note (no release) gives the transcriber a short extra note; with a 10 ms release or more it is exact.
 - `tests/reference/*.txt` pin the current mastering output (0.1 dB tolerance). They record behaviour, not correctness.
   After an intended change: `AFQ_UPDATE_REFERENCE=1 ./AkwardFreQTests Mastering`, review the diff, commit it.
 - `build-test/` is git-ignored. Not covered yet: the separation engine, the UI, the plugin processor.
+- The limiter keeps a count of samples its output clamp had to cut (`getClampedSampleCount()`); tests assert it is 0, because
+  the output peak alone cannot tell a working lookahead from a broken one hidden by the clamp.
+- The onset detector's constants (log compression 0.05, relative floor 15% over +-4 s, sensitivity 6) were tuned on synthetic
+  signals only. If real material is over- or under-segmented, retune with real stems before touching the tests.
 
 ## Set up a session
 
