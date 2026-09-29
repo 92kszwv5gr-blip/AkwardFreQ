@@ -131,6 +131,26 @@ namespace afq
                 expect (detectOnsets (silence (1, 100), kSampleRate).empty(), "a buffer shorter than one analysis frame has no onsets");
             }
 
+            beginTest ("tempo from detected onsets");
+            {
+                // SeparationEngine estimates the mix tempo from detectOnsets, so the two are tested together: a kick on
+                // every beat plus 16th-note hi-hats, at 145 BPM (the synthetic test track's tempo), over a noise floor.
+                const double bpm = 145.0, beat = 60.0 / bpm;
+                auto b = silence (1, samplesFor (16 * beat));
+                for (int i = 0; i < 16; ++i) addDecayingHit (b, samplesFor (i * beat), samplesFor (0.3), 55.0, 0.8f, 0.09);
+                for (int k = 0; k < 64; ++k)
+                {
+                    const auto hat = whiteNoise (1, samplesFor (0.04), 0.15f, 100u + (unsigned) k);
+                    for (int i = 0; i < hat.getNumSamples(); ++i)
+                    {
+                        const int p = samplesFor (k * beat / 4 + beat / 8) + i;
+                        if (p < b.getNumSamples()) b.setSample (0, p, b.getSample (0, p) + hat.getSample (0, i) * std::exp (-(float) i / (0.008f * (float) kSampleRate)));
+                    }
+                }
+                const auto onsets = detectOnsets (withNoiseFloor (b, -60.0f), kSampleRate);
+                expectWithinAbsoluteError (estimateBpmFromOnsets (onsets, kSampleRate), bpm, 2.0, "tempo of a kick + hi-hat pattern");
+            }
+
             beginTest ("detectOnsets settings");
             {
                 // Noise-floor ripple is what the relative floor exists to reject: turning it off must let much of it through.
