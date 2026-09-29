@@ -60,3 +60,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 add_test(NAME AkwardFreQTests COMMAND AkwardFreQTests)
+
+# Onset benchmark against a real drum dataset with MIDI ground truth (Groove MIDI Dataset, E-GMD). Not run by ctest.
+juce_add_console_app(AkwardFreQBenchmark PRODUCT_NAME "AkwardFreQBenchmark")
+target_sources(AkwardFreQBenchmark PRIVATE OnsetBenchmark.cpp ../Source/separation/AnalysisUtils.cpp)
+target_include_directories(AkwardFreQBenchmark PRIVATE ../Source)
+target_compile_definitions(AkwardFreQBenchmark PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1)
+target_link_libraries(AkwardFreQBenchmark
+    PRIVATE juce::juce_audio_basics juce::juce_audio_formats juce::juce_dsp juce::juce_graphics juce::juce_events
+    PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)

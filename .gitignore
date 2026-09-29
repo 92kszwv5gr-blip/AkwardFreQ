@@ -27,3 +27,4 @@ tools/venv/
 .vscode/
 *.user
 .DS_Store
+build-bench/
