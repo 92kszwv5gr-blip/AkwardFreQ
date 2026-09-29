@@ -21,6 +21,9 @@ namespace
         const char* name;
         float sensitivity;
         float relativeFloor;
+        int fftOrder = 10;
+        int hop = 256;
+        int minGap = 512;
     };
 
     struct Tally
@@ -135,6 +138,12 @@ int main (int argc, char** argv)
         { "sens 10, floor 0.15", 10.0f, 0.15f },
         { "sens 6, floor 0.05", 6.0f, 0.05f },
         { "sens 6, floor 0.30", 6.0f, 0.30f },
+        { "window 512, hop 128", 6.0f, 0.15f, 9, 128, 512 },
+        { "window 512, hop 128, gap 256", 6.0f, 0.15f, 9, 128, 256 },
+        { "window 2048, hop 256", 6.0f, 0.15f, 11, 256, 512 },
+        { "window 1024, hop 128", 6.0f, 0.15f, 10, 128, 512 },
+        { "window 512, hop 128, sens 3", 3.0f, 0.15f, 9, 128, 512 },
+        { "window 512, hop 128, floor 0.05", 6.0f, 0.05f, 9, 128, 512 },
     };
     std::vector<Tally> tallies (configs.size());
 
@@ -155,7 +164,7 @@ int main (int argc, char** argv)
 
         for (size_t c = 0; c < configs.size(); ++c)
         {
-            const auto onsets = afq::detectOnsets (mono, reader->sampleRate, 10, 256, configs[c].sensitivity, 512, configs[c].relativeFloor);
+            const auto onsets = afq::detectOnsets (mono, reader->sampleRate, configs[c].fftOrder, configs[c].hop, configs[c].sensitivity, configs[c].minGap, configs[c].relativeFloor);
             std::vector<double> detected;
             for (auto o : onsets) detected.push_back ((double) o / reader->sampleRate);
             double f = 0.0;

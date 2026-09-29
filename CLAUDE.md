@@ -53,7 +53,8 @@ model or audio device:
 - The limiter keeps a count of samples its output clamp had to cut (`getClampedSampleCount()`); tests assert it is 0, because
   the output peak alone cannot tell a working lookahead from a broken one hidden by the clamp.
 - The onset detector's constants (log compression 0.05, relative floor 15% over +-4 s, sensitivity 6) were tuned on synthetic
-  signals only. If real material is over- or under-segmented, retune with real stems before touching the tests.
+  signals, then scored on real drums (Groove MIDI Dataset, see `docs/onset-benchmark.md`): F1 0.60, recall 54%. Rerun
+  `AkwardFreQBenchmark` (needs the dataset on disk) after any change to `detectOnsets`; do not trust the synthetic tests alone.
 
 ## Set up a session
 
