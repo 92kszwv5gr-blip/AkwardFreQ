@@ -65,7 +65,7 @@ namespace afq
         const bool ok = separationEngine_.loadModels (demucsPath, userModelPath);
         if (! ok)
             juce::Logger::writeToLog ("AkwardFreQ: could not load " + demucsPath.getFullPathName()
-                                       + " — run tools/export_demucs_onnx.py and place the .onnx there. "
+                                       + " - run tools/export_demucs_onnx.py and place the .onnx there. "
                                          "Stem splitting will be unavailable until then.");
     }
 
@@ -109,7 +109,7 @@ namespace afq
         loadModelsIfNeeded();
         if (! separationEngine_.isDemucsModelLoaded())
         {
-            if (onSeparationProgress) onSeparationProgress (1.0f, "Demucs model not found — see README");
+            if (onSeparationProgress) onSeparationProgress (1.0f, "Demucs model not found - see README");
             return;
         }
 
@@ -130,7 +130,7 @@ namespace afq
         if (reader == nullptr)
         {
             if (onSeparationProgress)
-                onSeparationProgress (1.0f, "Unsupported or unreadable file (note: MP3 decode isn't bundled — see README)");
+                onSeparationProgress (1.0f, "Unsupported or unreadable file (note: MP3 decode isn't bundled - see README)");
             return;
         }
 
@@ -142,7 +142,7 @@ namespace afq
         loadModelsIfNeeded();
         if (! separationEngine_.isDemucsModelLoaded())
         {
-            if (onSeparationProgress) onSeparationProgress (1.0f, "Demucs model not found — see README");
+            if (onSeparationProgress) onSeparationProgress (1.0f, "Demucs model not found - see README");
             return;
         }
 
@@ -205,7 +205,7 @@ namespace afq
         auto result = getLatestResultForUI();
         if (! result)
         {
-            if (onExportComplete) onExportComplete (false, "No separation result yet — split a track first.");
+            if (onExportComplete) onExportComplete (false, "No separation result yet - split a track first.");
             return;
         }
 
@@ -233,7 +233,7 @@ namespace afq
         auto result = getLatestResultForUI();
         if (! result)
         {
-            if (onInstrumentExportComplete) onInstrumentExportComplete (false, "No separation result yet — split a track first.");
+            if (onInstrumentExportComplete) onInstrumentExportComplete (false, "No separation result yet - split a track first.");
             return;
         }
 
@@ -319,7 +319,7 @@ namespace afq
         auto result = getLatestResultForUI();
         if (! result)
         {
-            if (onDrumRackExportComplete) onDrumRackExportComplete (false, "No separation result yet — split a track first.");
+            if (onDrumRackExportComplete) onDrumRackExportComplete (false, "No separation result yet - split a track first.");
             return;
         }
 
@@ -356,7 +356,7 @@ namespace afq
         auto result = getLatestResultForUI();
         if (! result)
         {
-            if (onMidiExportComplete) onMidiExportComplete (false, "No separation result yet — split a track first.");
+            if (onMidiExportComplete) onMidiExportComplete (false, "No separation result yet - split a track first.");
             return;
         }
 

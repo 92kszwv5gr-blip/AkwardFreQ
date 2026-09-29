@@ -33,7 +33,7 @@ namespace afq
                 comments = (comments.isNotEmpty() ? comments + " | " : juce::String()) + "Key: " + key;
             if (comments.isNotEmpty()) tags.set ("ICMT", comments);
 
-            tags.set ("ISFT", "AkwardFreQ"); // originating software — always set
+            tags.set ("ISFT", "AkwardFreQ"); // originating software - always set
             return tags;
         }
     };

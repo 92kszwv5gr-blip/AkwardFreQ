@@ -83,7 +83,7 @@ namespace afq
     {
         if (running_.exchange (true))
         {
-            juce::Logger::writeToLog ("SeparationEngine::separateAsync called while a job is already running — ignored.");
+            juce::Logger::writeToLog ("SeparationEngine::separateAsync called while a job is already running - ignored.");
             return;
         }
 

@@ -28,7 +28,7 @@ namespace afq
         const juce::String xmlText = gunzip.readEntireStreamAsString();
         if (xmlText.isEmpty())
         {
-            errorMessage = "Template did not decompress to any XML — is it a valid .adv/.adg file? "
+            errorMessage = "Template did not decompress to any XML - is it a valid .adv/.adg file? "
                             + file.getFullPathName();
             return false;
         }
@@ -132,7 +132,7 @@ namespace afq
 
                 if (! patchedAny)
                 {
-                    errorMessage = "Template's <SampleRef><FileRef> didn't contain a <Path> node — "
+                    errorMessage = "Template's <SampleRef><FileRef> didn't contain a <Path> node - "
                                     "this template's schema doesn't match what this writer expects. "
                                     "Falling back to SFZ/folder export is the reliable path; consider "
                                     "sending the template's decompressed XML to adjust this writer.";
@@ -141,14 +141,14 @@ namespace afq
             }
             else
             {
-                errorMessage = "Template's <SampleRef> had no <FileRef> — unexpected schema, aborting rather "
+                errorMessage = "Template's <SampleRef> had no <FileRef> - unexpected schema, aborting rather "
                                 "than guessing.";
                 return false;
             }
         }
         else
         {
-            errorMessage = "Could not find a <SampleRef> node in the template — is this really a Simpler "
+            errorMessage = "Could not find a <SampleRef> node in the template - is this really a Simpler "
                             "preset (.adv) with a sample already loaded?";
             return false;
         }

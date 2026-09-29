@@ -27,7 +27,7 @@ namespace afq
 
                 addAndMakeVisible (editButton_);
                 editButton_.setEnabled (slot_ && slot_->hasEditor());
-                editButton_.onClick = [this] { if (slot_) slot_->showEditorWindow ("AkwardFreQ Insert — "); };
+                editButton_.onClick = [this] { if (slot_) slot_->showEditorWindow ("AkwardFreQ Insert - "); };
 
                 addAndMakeVisible (upButton_);
                 upButton_.onClick = [this] { chain_.moveSlot (index_, index_ - 1); if (onChanged_) onChanged_(); };
@@ -112,7 +112,7 @@ namespace afq
         addAndMakeVisible (statusLabel_);
         statusLabel_.setFont (11.0f);
         statusLabel_.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
-        statusLabel_.setText ("No scan yet — click Rescan Plugins.", juce::dontSendNotification);
+        statusLabel_.setText ("No scan yet - click Rescan Plugins.", juce::dontSendNotification);
 
         addAndMakeVisible (rowsContainer_);
 

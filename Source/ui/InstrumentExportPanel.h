@@ -36,7 +36,7 @@ namespace afq
 
     private:
         PresetBar presetBar_ { "InstrumentExport", "Instrument Preset" };
-        juce::Label selectionLabel_ { {}, "No region selected — pick one in the Split tab" };
+        juce::Label selectionLabel_ { {}, "No region selected - pick one in the Split tab" };
         juce::TextEditor nameEditor_;
         juce::TextEditor prefixEditor_;
         juce::ToggleButton writeSfzToggle_ { "Export as SFZ" };

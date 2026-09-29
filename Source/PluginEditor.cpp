@@ -41,7 +41,7 @@ namespace afq
                 processor_.startCapture();
                 capturing_ = true;
                 captureButton_.setButtonText ("Stop Capture && Analyze");
-                statusLabel_.setText ("Capturing — play the track through this track in Ableton now.", juce::dontSendNotification);
+                statusLabel_.setText ("Capturing - play the track through this track in Ableton now.", juce::dontSendNotification);
             }
             else
             {
@@ -317,7 +317,7 @@ namespace afq
             midiPanel_.setSelectedRange (snapped.startSample, snapped.endSample, true);
             midiPanel_.setComplete (snapped.snapped, snapped.snapped
                 ? ("Snapped to " + juce::String (bars) + " bars.")
-                : "Couldn't snap (no BPM estimate yet, or range too long) — using the range as-is.");
+                : "Couldn't snap (no BPM estimate yet, or range too long) - using the range as-is.");
         };
 
         midiPanel_.onLoopPreviewToggled = [this] (bool enabled)

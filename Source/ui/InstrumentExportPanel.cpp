@@ -166,7 +166,7 @@ namespace afq
         const juce::String sourceLabel = useRawDrumsBus ? juce::String ("Drums Bus slice") : layerName (type);
         selectionLabel_.setText (hasSelection
             ? ("Selected: " + sourceLabel + " (" + juce::String ((endSample - startSample) / 44.1 / 1000.0, 2) + "s)")
-            : juce::String ("No region selected — pick one in the Split tab"), juce::dontSendNotification);
+            : juce::String ("No region selected - pick one in the Split tab"), juce::dontSendNotification);
     }
 
     void InstrumentExportPanel::setComplete (bool ok, const juce::String& message)

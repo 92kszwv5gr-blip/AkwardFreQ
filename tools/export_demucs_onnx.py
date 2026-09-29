@@ -41,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output", default="../Models/htdemucs.onnx",
                          help="Output .onnx path (default: ../Models/htdemucs.onnx)")
-    parser.add_argument("--opset", type=int, default=17)
+    parser.add_argument("--opset", type=int, default=18)  # aten::col2im (used by the ISTFT patch) needs opset >= 18
     args = parser.parse_args()
 
     print("Loading pretrained htdemucs (downloads weights on first run, ~80-160MB)...")

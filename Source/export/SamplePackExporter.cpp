@@ -135,7 +135,7 @@ namespace afq
 
         if (exportedCount == 0)
         {
-            errorMessage = "No regions met the minimum length / classification criteria — nothing was exported.";
+            errorMessage = "No regions met the minimum length / classification criteria - nothing was exported.";
             return false;
         }
 

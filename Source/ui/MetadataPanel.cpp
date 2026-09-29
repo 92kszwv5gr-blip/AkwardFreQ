@@ -55,7 +55,7 @@ namespace afq
         bpm_ = bpm;
         key_ = key;
         infoLabel_.setText (juce::String::formatted ("Auto-tagged: %.0f BPM, ", bpm) + key
-                             + " (included automatically — not editable here)", juce::dontSendNotification);
+                             + " (included automatically - not editable here)", juce::dontSendNotification);
     }
 
     TrackMetadata MetadataPanel::getMetadata() const

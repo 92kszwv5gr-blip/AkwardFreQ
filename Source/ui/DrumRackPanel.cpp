@@ -191,7 +191,7 @@ namespace afq
             previewSlices_.clear();
             sliceView_.setAudioSource (nullptr, 44100.0);
             sliceView_.setSlices ({});
-            sliceCountReadout_.setText ("No audio to preview yet — split a track first.", juce::dontSendNotification);
+            sliceCountReadout_.setText ("No audio to preview yet - split a track first.", juce::dontSendNotification);
             sendToInstrumentButton_.setEnabled (false);
             return;
         }
