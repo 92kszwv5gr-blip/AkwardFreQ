@@ -50,15 +50,18 @@ namespace afq
         float flux (const float* magnitudes, const float* prevMagnitudes) const;
     };
 
-    // Peak-picks onsets from a mono buffer using spectral-flux novelty with an
-    // adaptive (moving-median) threshold. Returns onset positions in samples,
-    // ascending, with a minimum inter-onset gap to avoid double-triggers.
+    // Peak-picks onsets from a mono buffer using spectral-flux novelty (log-compressed magnitudes) with two
+    // thresholds that must both be beaten: an adaptive one (moving median + `sensitivity` x MAD) and a relative
+    // floor (`minRelativeStrength` x the strongest novelty within +-4 s), which stops noise-floor ripple and
+    // decay tails counting as onsets. Returns onset positions in samples, ascending, at least `minGapSamples`
+    // apart. There is no onset at sample 0 unless the signal changes there; callers that want one add it.
     std::vector<int64_t> detectOnsets (const juce::AudioBuffer<float>& monoBuffer,
                                         double sampleRate,
                                         int fftOrder = 10,
                                         int hopSize = 256,
-                                        float sensitivity = 1.5f,   // threshold = median + sensitivity * MAD
-                                        int minGapSamples = 512);
+                                        float sensitivity = 6.0f,
+                                        int minGapSamples = 512,
+                                        float minRelativeStrength = 0.15f);
 
     // Simple time-domain helpers, used both standalone and inside FrameFeatureExtractor.
     float computeRms (const float* samples, int numSamples);

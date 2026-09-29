@@ -26,23 +26,16 @@ namespace afq
             using namespace test;
 
             beginTest ("one slice per hit, starting at the hit");
+            for (bool noiseFloor : { true, false }) // stems carry a noise floor; a gated stem is exact digital silence between hits
             {
-                // What DrumSlicer should do. The detector's default settings over-trigger (see AnalysisUtilsTests),
-                // so today it returns far more slices than hits; the accuracy check is a known issue until that is fixed.
                 std::vector<double> times;
-                const auto b = hitTrain (2, 4.5, 0.25, 0.5, times);
+                const auto b = hitTrain (2, 4.5, 0.25, 0.5, times, noiseFloor);
                 const auto slices = DrumSlicer::slice (b, kSampleRate);
-                knownIssue (*this, slices.size() == times.size(),
-                            juce::String ((int) times.size()) + " hits give " + juce::String ((int) slices.size()) + " slices at a -50 dBFS noise floor");
-            }
-
-            beginTest ("hits separated by digital silence");
-            {
-                std::vector<double> times;
-                const auto b = hitTrain (1, 4.5, 0.25, 0.5, times, false);
-                const auto n = DrumSlicer::slice (b, kSampleRate).size();
-                knownIssue (*this, n == times.size(), "clean hits with exact digital silence between them are over-sliced ("
-                                + juce::String ((int) times.size()) + " hits -> " + juce::String ((int) n) + " slices); same cause as detectOnsets");
+                const auto what = juce::String (noiseFloor ? "with a -50 dBFS noise floor" : "between digital silence");
+                expectEquals ((int) slices.size(), (int) times.size(), "one slice per hit " + what);
+                for (size_t i = 0; i < std::min (slices.size(), times.size()); ++i)
+                    expectWithinAbsoluteError ((double) slices[i].startSample, times[i] * kSampleRate, 0.025 * kSampleRate,
+                                               "slice " + juce::String ((int) i + 1) + " starts at its hit " + what);
             }
 
             beginTest ("slices are ordered, contiguous and numbered from 1");

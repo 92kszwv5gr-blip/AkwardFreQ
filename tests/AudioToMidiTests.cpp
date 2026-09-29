@@ -26,12 +26,22 @@ namespace afq
             return out;
         }
 
-        // Sine notes, one after another, each `noteSeconds` long with `gapSeconds` of silence after it.
-        static juce::AudioBuffer<float> melody (const std::vector<double>& hz, double noteSeconds, double gapSeconds, float amp = 0.5f)
+        // Sine notes, one after another, each `noteSeconds` long with `gapSeconds` of silence after it. Real
+        // instruments release rather than stop dead, so each note fades out over `releaseSeconds`; 0 is a hard cut.
+        static juce::AudioBuffer<float> melody (const std::vector<double>& hz, double noteSeconds, double gapSeconds,
+                                                double releaseSeconds = 0.02, float amp = 0.5f)
         {
             auto b = test::silence (1, test::samplesFor ((noteSeconds + gapSeconds) * (double) hz.size()));
+            const int fade = test::samplesFor (releaseSeconds);
             for (size_t i = 0; i < hz.size(); ++i)
-                test::addSine (b, test::samplesFor ((double) i * (noteSeconds + gapSeconds)), test::samplesFor (noteSeconds), hz[i], amp);
+            {
+                const int start = test::samplesFor ((double) i * (noteSeconds + gapSeconds));
+                const int length = test::samplesFor (noteSeconds);
+                test::addSine (b, start, length, hz[i], amp);
+                if (fade > 0)
+                    for (int k = 0; k < fade; ++k)
+                        b.setSample (0, start + length - fade + k, b.getSample (0, start + length - fade + k) * (1.0f - (float) k / (float) fade));
+            }
             return test::withNoiseFloor (b, -50.0f);
         }
 
@@ -43,15 +53,29 @@ namespace afq
 
             beginTest ("transcribes a monophonic melody");
             {
-                // A4, C5, E5 -> MIDI 69, 72, 76. The transcriber segments at detected onsets, and the detector's
-                // default settings over-trigger (see AnalysisUtilsTests), so notes are chopped and later pitches are
-                // wrong. Known issue until the detector is fixed.
+                // A4, C5, E5 -> MIDI 69, 72, 76, notes 0.3 s long every 0.4 s.
                 const auto b = melody ({ 440.0, 523.2511, 659.2551 }, 0.3, 0.1);
                 const auto notes = notesOf (AudioToMidiConverter::transcribe (b, 0, b.getNumSamples(), settings()));
                 std::vector<int> found;
                 for (const auto& n : notes) found.push_back (n.number);
-                knownIssue (*this, found == std::vector<int> { 69, 72, 76 },
-                            "a 3-note melody transcribes to " + juce::String ((int) notes.size()) + " notes");
+                expect (found == std::vector<int> { 69, 72, 76 }, "three notes with the right pitches, got " + juce::String ((int) notes.size()) + " notes");
+                if (notes.size() == 3)
+                    for (size_t i = 0; i < 3; ++i)
+                        expectWithinAbsoluteError (notes[i].startSeconds, 0.4 * (double) i, 0.03, "note " + juce::String ((int) i) + " starts where the note does");
+            }
+
+            beginTest ("melody with hard-cut notes");
+            {
+                // Pitches are right, but a note that stops dead is a click, the click counts as an onset, and the
+                // segment that starts there still holds the last ~16 ms of the note (onsets are placed at the start of
+                // the analysis frame), so hard-cut notes gain a short second note. Measured: with a 10 ms or longer
+                // release the melody transcribes exactly; at 5 ms it gives 4 notes; hard-cut it gives 6.
+                const auto b = melody ({ 440.0, 523.2511, 659.2551 }, 0.3, 0.1, 0.0);
+                const auto notes = notesOf (AudioToMidiConverter::transcribe (b, 0, b.getNumSamples(), settings()));
+                std::vector<int> distinct;
+                for (const auto& n : notes) if (distinct.empty() || distinct.back() != n.number) distinct.push_back (n.number);
+                expect (distinct == std::vector<int> { 69, 72, 76 }, "the pitch sequence is still right");
+                knownIssue (*this, notes.size() == 3, "hard-cut notes give " + juce::String ((int) notes.size()) + " notes for 3");
             }
 
             beginTest ("notes have sensible times and velocities");
@@ -72,7 +96,7 @@ namespace afq
             {
                 auto meanVelocity = [] (float amp)
                 {
-                    const auto b = melody ({ 440.0 }, 0.4, 0.0, amp);
+                    const auto b = melody ({ 440.0 }, 0.4, 0.0, 0.02, amp);
                     const auto notes = notesOf (AudioToMidiConverter::transcribe (b, 0, b.getNumSamples(), settings()));
                     double sum = 0.0;
                     for (const auto& n : notes) sum += n.velocity;

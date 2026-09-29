@@ -1,4 +1,5 @@
 #include "AnalysisUtils.h"
+#include <deque>
 #include <algorithm>
 #include <cmath>
 
@@ -245,8 +246,41 @@ namespace afq
     }
 
     //==============================================================================
+    namespace
+    {
+        // Magnitudes are compressed with log(1 + gamma * m) before the flux is taken. Below about 1/gamma (the level of
+        // a noise floor or a quiet tail) this is linear; above it strong partials count by their ratio, not their size,
+        // so a loud sustained partial cannot swamp the quiet onsets around it.
+        constexpr float kMagnitudeCompression = 0.05f;
+
+        // How far either side of a frame the strongest novelty is looked up when applying the relative floor.
+        constexpr double kRelativeFloorHalfWindowSeconds = 4.0;
+
+        // out[i] = max of v over [i - halfWidth, i + halfWidth], clipped to the vector. O(n) monotonic-deque sweep.
+        std::vector<float> slidingMax (const std::vector<float>& v, size_t halfWidth)
+        {
+            const size_t n = v.size();
+            std::vector<float> out (n);
+            std::deque<size_t> candidates; // indices, values strictly decreasing from front to back
+            for (size_t j = 0; j < n + halfWidth; ++j)
+            {
+                if (j < n)
+                {
+                    while (! candidates.empty() && v[candidates.back()] <= v[j]) candidates.pop_back();
+                    candidates.push_back (j);
+                }
+                if (j < halfWidth) continue;
+                const size_t i = j - halfWidth;
+                while (candidates.front() + halfWidth < i) candidates.pop_front();
+                out[i] = v[candidates.front()];
+            }
+            return out;
+        }
+    }
+
     std::vector<int64_t> detectOnsets (const juce::AudioBuffer<float>& monoBuffer, double sampleRate,
-                                        int fftOrder, int hopSize, float sensitivity, int minGapSamples)
+                                        int fftOrder, int hopSize, float sensitivity, int minGapSamples,
+                                        float minRelativeStrength)
     {
         FrameFeatureExtractor extractor (fftOrder);
         const int fftSize = extractor.fftSize();
@@ -273,7 +307,8 @@ namespace afq
             if (! first)
             {
                 for (int i = 0; i < numBins; ++i)
-                    fluxVal += std::max (0.0f, curMag[(size_t) i] - prevMag[(size_t) i]);
+                    fluxVal += std::max (0.0f, std::log1p (kMagnitudeCompression * curMag[(size_t) i])
+                                                   - std::log1p (kMagnitudeCompression * prevMag[(size_t) i]));
             }
             first = false;
 
@@ -287,6 +322,11 @@ namespace afq
 
         const int medianWindow = std::max (1, (int) (sampleRate / hopSize)); // ~1 second of frames
         int64_t lastOnsetSample = -((int64_t) minGapSamples);
+
+        // The median + MAD threshold is purely statistical, so on a quiet or stationary stretch it always finds
+        // "outliers" in the ripple of the noise floor. Requiring a peak to also reach a fraction of the strongest
+        // novelty nearby rules those out without an absolute level, which would silence genuinely quiet stems.
+        const auto localStrongest = slidingMax (novelty, (size_t) std::max (1.0, kRelativeFloorHalfWindowSeconds * sampleRate / hopSize));
 
         std::vector<float> windowBuf, devBuf;
         for (size_t i = 0; i < novelty.size(); ++i)
@@ -304,7 +344,7 @@ namespace afq
             std::nth_element (devBuf.begin(), devBuf.begin() + (long) devBuf.size() / 2, devBuf.end());
             const float mad = devBuf[devBuf.size() / 2];
 
-            const float threshold = median + sensitivity * mad + 1.0e-6f;
+            const float threshold = std::max (median + sensitivity * mad + 1.0e-6f, minRelativeStrength * localStrongest[i]);
             const bool isLocalPeak =
                 novelty[i] > threshold
                 && (i == 0 || novelty[i] >= novelty[i - 1])
